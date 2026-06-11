@@ -3,6 +3,7 @@
 
 import { buildEntry, type IndexEntry } from './entry.js';
 import { runSearch, type SearchConfig } from './pipeline.js';
+import { computeMatches } from './matches.js';
 import type {
   IndexOptions,
   SearchOptions,
@@ -71,13 +72,19 @@ export function createIndex<T>(
       const merged: SearchOptions = { ...defaults, ...searchOptions };
       const config = resolveConfig(romaji, separatorExpansion, merged);
       const hits = runSearch(query, entries, config);
-      return hits.map((h) => ({
-        item: items[h.refIndex]!,
-        refIndex: h.refIndex,
-        score: h.score,
-        tier: h.tier,
-        // matches は M8 で配線
-      }));
+      return hits.map((h) => {
+        const result: SearchResult<T> = {
+          item: items[h.refIndex]!,
+          refIndex: h.refIndex,
+          score: h.score,
+          tier: h.tier,
+        };
+        // tier 1/2 のみ matches を付与（tier 3/4 は positions=null → undefined のまま）
+        if (config.includeMatches && h.match.positions !== null) {
+          result.matches = computeMatches(entries[h.refIndex]!, h.match);
+        }
+        return result;
+      });
     },
   };
 }
