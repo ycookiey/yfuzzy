@@ -12,7 +12,7 @@ kmnr                                        →  「カミナリ」にヒット�
 ## インストール
 
 ```sh
-npm install yfuzzy
+npm install @ycookiey/yfuzzy
 ```
 
 Node 18+ / ESM 専用。
@@ -20,7 +20,7 @@ Node 18+ / ESM 専用。
 ## クイックスタート
 
 ```ts
-import { search } from 'yfuzzy';
+import { search } from '@ycookiey/yfuzzy';
 
 const stations = ['トウキョウ', 'シンジュク', 'シブヤ', 'シナガワ'];
 
@@ -43,7 +43,7 @@ search('しんじゅく', items, { getText: (x) => x.yomi });
 同じデータを繰り返し検索するなら `createIndex` で事前構築する（単発 `search` と結果は同一）:
 
 ```ts
-import { createIndex } from 'yfuzzy';
+import { createIndex } from '@ycookiey/yfuzzy';
 
 const index = createIndex(stations);
 index.search('しぶ');   // → シブヤ

@@ -1,8 +1,11 @@
 {
-  "name": "yfuzzy",
+  "name": "@ycookiey/yfuzzy",
   "version": "0.1.0",
   "description": "Japanese-aware fuzzy search library",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "author": "ycookiey",
   "keywords": [
     "fuzzy",
