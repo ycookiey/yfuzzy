@@ -13,6 +13,22 @@ export const KUNREI: RomajiTable = { single: KUNREI_SINGLE, digraphs: KUNREI_DIG
 export const HEPBURN: RomajiTable = { single: HEPBURN_SINGLE, digraphs: HEPBURN_DIGRAPHS };
 
 /**
+ * romaji オプション（spec 2.3 / design.md）。データ側 romaji 表現の生成と
+ * romaji 照合空間の有効/無効を制御する（クエリ側 toKana には影響しない）。
+ */
+export type RomajiOption = 'hepburn' | 'kunrei' | 'both' | false;
+
+/** 訓令式の生成・照合が有効か */
+export function kunreiEnabled(option: RomajiOption): boolean {
+  return option === 'both' || option === 'kunrei';
+}
+
+/** ヘボン式の生成・照合が有効か */
+export function hepburnEnabled(option: RomajiOption): boolean {
+  return option === 'both' || option === 'hepburn';
+}
+
+/**
  * core kana（1文字 or 拗音ダイグラフ 2文字、ー/ッ を含まない）をローマ字へ。
  * テーブルに無い文字（漢字・記号・英数）は小文字化してそのまま返す（パススルー）。
  */

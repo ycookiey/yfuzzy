@@ -45,6 +45,14 @@ const HIRA_TO_KATA_OFFSET = 0x60;
 const HW_KATA_TABLE =
   '。「」、・ヲァィゥェォャュョッーアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワン';
 
+/**
+ * 適用する変換ステップの範囲。
+ * - 'all': 全ステップ（データ側 normalize 用）
+ * - 'preKana': 手順 1–3（U+3000・全角英数・小文字化）。クエリ側 toKana の前段
+ * - 'postKana': 手順 4–5（半角カナ合成・ひら→カタ）。クエリ側 toKana の後段
+ */
+export type TransformMode = 'all' | 'preKana' | 'postKana';
+
 interface CodePointUnit {
   readonly cp: string;
   readonly start: number;
@@ -61,7 +69,13 @@ function toUnits(raw: string): CodePointUnit[] {
   return units;
 }
 
-export function normalize(raw: string): Normalized {
+/**
+ * 正規化のコア（spec 2.1）。mode で適用ステップを絞り、withMap で normMap 生成を制御する。
+ * normalize()（mode='all'・map あり）と applyTransforms()（map なし）が共有する。
+ */
+function run(raw: string, mode: TransformMode, withMap: boolean): { text: string; map: Span[] } {
+  const doPre = mode === 'all' || mode === 'preKana';
+  const doPost = mode === 'all' || mode === 'postKana';
   const units = toUnits(raw);
   let text = '';
   const map: Span[] = [];
@@ -72,14 +86,14 @@ export function normalize(raw: string): Normalized {
     let out: string;
     let spanEnd = cur.end;
 
-    if (code === IDEOGRAPHIC_SPACE) {
+    if (doPre && code === IDEOGRAPHIC_SPACE) {
       out = ' ';
-    } else if (code >= FULLWIDTH_ASCII_START && code <= FULLWIDTH_ASCII_END) {
+    } else if (doPre && code >= FULLWIDTH_ASCII_START && code <= FULLWIDTH_ASCII_END) {
       const half = String.fromCharCode(code - FULLWIDTH_OFFSET);
       out = half >= 'A' && half <= 'Z' ? half.toLowerCase() : half;
-    } else if (code >= ASCII_UPPER_START && code <= ASCII_UPPER_END) {
+    } else if (doPre && code >= ASCII_UPPER_START && code <= ASCII_UPPER_END) {
       out = cur.cp.toLowerCase();
-    } else if (code >= HW_KATAKANA_START && code <= HW_KATAKANA_END) {
+    } else if (doPost && code >= HW_KATAKANA_START && code <= HW_KATAKANA_END) {
       const base = HW_KATA_TABLE[code - HW_KATAKANA_START]!;
       const next = i + 1 < units.length ? units[i + 1]! : null;
       const nextCode = next ? next.cp.codePointAt(0)! : -1;
@@ -96,20 +110,33 @@ export function normalize(raw: string): Normalized {
       } else {
         out = base;
       }
-    } else if (code === HW_DAKUTEN) {
+    } else if (doPost && code === HW_DAKUTEN) {
       out = STANDALONE_DAKUTEN;
-    } else if (code === HW_HANDAKUTEN) {
+    } else if (doPost && code === HW_HANDAKUTEN) {
       out = STANDALONE_HANDAKUTEN;
-    } else if (code >= HIRAGANA_START && code <= HIRAGANA_END) {
+    } else if (doPost && code >= HIRAGANA_START && code <= HIRAGANA_END) {
       out = String.fromCodePoint(code + HIRA_TO_KATA_OFFSET);
     } else {
-      out = cur.cp; // 漢字・記号・絵文字などは無変換
+      out = cur.cp; // 対象外ステップ・漢字・記号・絵文字などは無変換
     }
 
-    const span: Span = [cur.start, spanEnd];
-    for (let k = 0; k < out.length; k++) map.push(span);
+    if (withMap) {
+      const span: Span = [cur.start, spanEnd];
+      for (let k = 0; k < out.length; k++) map.push(span);
+    }
     text += out;
   }
 
   return { text, map };
+}
+
+/** 共通正規化（全手順）+ normMap 生成。データ側 Index 構築用。 */
+export function normalize(raw: string): Normalized {
+  const { text, map } = run(raw, 'all', true);
+  return { text, map };
+}
+
+/** 指定ステップのみ適用し文字列を返す（位置マップ不要のクエリ側用）。 */
+export function applyTransforms(raw: string, mode: TransformMode): string {
+  return run(raw, mode, false).text;
 }
