@@ -23,9 +23,12 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench": "npm run build && node bench/run.js"
   },
   "devDependencies": {
+    "fuse.js": "^7.4.2",
+    "fuzzysort": "^3.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   },
