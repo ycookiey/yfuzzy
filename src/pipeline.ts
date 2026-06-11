@@ -7,10 +7,11 @@ import type { IndexEntry } from './entry.js';
 import type { RomajiOption } from './romaji/convert.js';
 import type { Matcher, TierMatch } from './tiers/types.js';
 import { tier1Exact } from './tiers/tier1-exact.js';
+import { tier2Flexible } from './tiers/tier2-flexible.js';
 
 // tier 昇順。slice(0, maxTier) で実行対象を絞る（spec 4.0）。
-// M6/M7 で tier2/tier3/tier4 を末尾に追加する。
-const ALL_MATCHERS: readonly Matcher[] = [tier1Exact];
+// M7 で tier3/tier4 を末尾に追加する。
+const ALL_MATCHERS: readonly Matcher[] = [tier1Exact, tier2Flexible];
 
 /** pipeline 実行設定（index.ts が options から解決して渡す） */
 export interface SearchConfig {
