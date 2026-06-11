@@ -8,10 +8,12 @@ import type { RomajiOption } from './romaji/convert.js';
 import type { Matcher, TierMatch } from './tiers/types.js';
 import { tier1Exact } from './tiers/tier1-exact.js';
 import { tier2Flexible } from './tiers/tier2-flexible.js';
+import { tier3Typo } from './tiers/tier3-typo.js';
+import { tier4Structural } from './tiers/tier4-structural.js';
 
 // tier 昇順。slice(0, maxTier) で実行対象を絞る（spec 4.0）。
-// M7 で tier3/tier4 を末尾に追加する。
-const ALL_MATCHERS: readonly Matcher[] = [tier1Exact, tier2Flexible];
+// 既定 maxTier=3 では tier4 は実行されない（インデックス3が範囲外）。
+const ALL_MATCHERS: readonly Matcher[] = [tier1Exact, tier2Flexible, tier3Typo, tier4Structural];
 
 /** pipeline 実行設定（index.ts が options から解決して渡す） */
 export interface SearchConfig {
