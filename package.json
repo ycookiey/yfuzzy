@@ -1,9 +1,21 @@
 {
   "name": "yfuzzy",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Japanese-aware fuzzy search library",
   "license": "MIT",
+  "author": "ycookiey",
+  "keywords": [
+    "fuzzy",
+    "fuzzy-search",
+    "search",
+    "japanese",
+    "kana",
+    "romaji",
+    "katakana",
+    "hiragana",
+    "typeahead",
+    "autocomplete"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,7 +36,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "bench": "npm run build && node bench/run.js"
+    "bench": "npm run build && node bench/run.js",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "fuse.js": "^7.4.2",
