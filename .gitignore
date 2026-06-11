@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.agent-output/
+refs/
+*.log
+.DS_Store
+coverage/
+.vitest-cache/
