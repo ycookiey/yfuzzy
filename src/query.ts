@@ -15,6 +15,7 @@ import {
 } from './romaji/convert.js';
 import { kanaToRomaji } from './syllable.js';
 import { generateBigrams } from './bigram.js';
+import { charMask } from './charmask.js';
 
 /** クエリ1経路分の正規化結果 */
 export interface NormalizedQuery {
@@ -24,6 +25,10 @@ export interface NormalizedQuery {
   readonly kunrei: string | null;
   /** ヘボン式ローマ字（romaji オプションで無効時 null） */
   readonly hepburn: string | null;
+  /** 各空間の文字集合マスク（前置フィルタ用、空間が無効なら 0） */
+  readonly kanaMask: number;
+  readonly kunreiMask: number;
+  readonly hepburnMask: number;
   /** bigram 集合（tier 4 用、遅延生成） */
   bigrams: Set<string> | null;
 }
@@ -31,10 +36,15 @@ export interface NormalizedQuery {
 /** クエリ文字列（1経路分）を正規化する */
 export function normalizeQuery(raw: string, romaji: RomajiOption): NormalizedQuery {
   const kana = applyTransforms(toKana(applyTransforms(raw, 'preKana')), 'postKana');
+  const kunrei = kunreiEnabled(romaji) ? kanaToRomaji(kana, KUNREI) : null;
+  const hepburn = hepburnEnabled(romaji) ? kanaToRomaji(kana, HEPBURN) : null;
   return {
     kana,
-    kunrei: kunreiEnabled(romaji) ? kanaToRomaji(kana, KUNREI) : null,
-    hepburn: hepburnEnabled(romaji) ? kanaToRomaji(kana, HEPBURN) : null,
+    kunrei,
+    hepburn,
+    kanaMask: charMask(kana),
+    kunreiMask: kunrei !== null ? charMask(kunrei) : 0,
+    hepburnMask: hepburn !== null ? charMask(hepburn) : 0,
     bigrams: null,
   };
 }

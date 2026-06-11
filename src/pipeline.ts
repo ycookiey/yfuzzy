@@ -42,27 +42,20 @@ function finalScore(m: TierMatch): number {
   return (4 - m.tier + clamp01(m.intraScore)) / 4;
 }
 
-/** first-match-wins（spec 4.0）: tier 昇順で最初にマッチした tier を採用 */
-function runMatchers(q: NormalizedQuery, e: IndexEntry, matchers: readonly Matcher[]): TierMatch | null {
-  for (const matcher of matchers) {
-    const m = matcher(q, e);
-    if (m !== null) return m;
-  }
-  return null;
-}
-
-/** 1 item を全経路で照合し、最良（score 降順、同点は経路順）を返す */
-function searchEntry(
+/**
+ * 単一 tier の matcher を全経路で照合し、最良（score 降順、同点は経路順）を返す。
+ * strict > により同点は先の経路（(c)>(a)>(b)）が残る。
+ */
+function bestPathAtTier(
+  matcher: Matcher,
   e: IndexEntry,
   paths: readonly NormalizedQuery[],
-  matchers: readonly Matcher[],
 ): SearchHit | null {
   let best: SearchHit | null = null;
   for (const q of paths) {
-    const m = runMatchers(q, e, matchers);
+    const m = matcher(q, e);
     if (m === null) continue;
     const score = finalScore(m);
-    // strict > により同点は先の経路（(c)>(a)>(b)）が残る
     if (best === null || score > best.score) {
       best = { refIndex: e.refIndex, score, tier: m.tier, match: m };
     }
@@ -73,6 +66,11 @@ function searchEntry(
 /**
  * 検索本体。query は生入力、entries は構築済みエントリ。
  * 経路展開・クエリ正規化は item 非依存なので item ループ前に1回だけ行う。
+ *
+ * 実行は tier-first 転置（tier 昇順の外ループ × エントリ内ループ）。各エントリは
+ * 最初にマッチした tier で claim し以降の tier では評価しない（first-match-wins と等価）。
+ * tier 完了時に limit 件溜まれば打ち切る: tier レンジは分離（tier1>tier2>…）し後続 tier は
+ * 必ず下回るため、上位 limit 件は確定済みで結果は非転置と同一（spec 4.0/5章）。
  */
 export function runSearch(
   query: string,
@@ -87,13 +85,23 @@ export function runSearch(
   const paths = pathStrings.map((p) => normalizeQuery(p, config.romaji));
 
   const matchers = ALL_MATCHERS.slice(0, config.maxTier);
+  const { limit, minScore } = config;
 
   const hits: SearchHit[] = [];
-  for (const e of entries) {
-    const hit = searchEntry(e, paths, matchers);
-    if (hit !== null && hit.score >= config.minScore) hits.push(hit);
+  const claimed = new Uint8Array(entries.length); // 既にマッチ確定したエントリ
+
+  for (const matcher of matchers) {
+    for (let idx = 0; idx < entries.length; idx++) {
+      if (claimed[idx]) continue;
+      const hit = bestPathAtTier(matcher, entries[idx]!, paths);
+      if (hit === null) continue;
+      claimed[idx] = 1;
+      if (hit.score >= minScore) hits.push(hit);
+    }
+    // tier 完了時点で limit を満たせば後続 tier は不要（レンジ分離による）
+    if (limit !== undefined && hits.length >= limit) break;
   }
 
   hits.sort((a, b) => b.score - a.score || a.refIndex - b.refIndex);
-  return config.limit !== undefined ? hits.slice(0, config.limit) : hits;
+  return limit !== undefined ? hits.slice(0, limit) : hits;
 }

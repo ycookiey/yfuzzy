@@ -12,10 +12,13 @@ const ROMAJI_PREFIX = 0.97;
 const ROMAJI_SUBSTRING = 0.87;
 const HEPBURN_PENALTY = 0.99; // 訓令優先（両式同時マッチ時の決定性）
 
+// positions は連続区間 [offset, offset+len) なので offset/len のみ保持し、
+// 最終 best 確定後に1回だけ配列化する（非 best 候補の確保を廃す）。
 interface Candidate {
   readonly intraScore: number;
   readonly space: Space;
-  readonly positions: number[];
+  readonly offset: number;
+  readonly len: number;
 }
 
 function range(len: number, offset: number): number[] {
@@ -27,7 +30,7 @@ function range(len: number, offset: number): number[] {
 function prefix(query: string, data: string, space: Space, factor: number): Candidate | null {
   if (query.length === 0 || data.length === 0) return null;
   if (!data.startsWith(query)) return null;
-  return { intraScore: (query.length / data.length) * factor, space, positions: range(query.length, 0) };
+  return { intraScore: (query.length / data.length) * factor, space, offset: 0, len: query.length };
 }
 
 function substring(
@@ -40,7 +43,7 @@ function substring(
   if (query.length < minLen || data.length === 0) return null;
   const idx = data.indexOf(query);
   if (idx <= 0) return null; // 0 = 前方一致（別サブマッチが担当）、<0 = 非一致
-  return { intraScore: (query.length / data.length) * factor, space, positions: range(query.length, idx) };
+  return { intraScore: (query.length / data.length) * factor, space, offset: idx, len: query.length };
 }
 
 export const tier1Exact: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
@@ -67,5 +70,5 @@ export const tier1Exact: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
 
   if (best === null) return null;
   const c: Candidate = best;
-  return { tier: 1, intraScore: c.intraScore, space: c.space, positions: c.positions };
+  return { tier: 1, intraScore: c.intraScore, space: c.space, positions: range(c.len, c.offset) };
 };

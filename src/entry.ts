@@ -11,6 +11,7 @@ import {
 } from './romaji/convert.js';
 import { toRomajiForm, kanaBoundaries, type RomajiForm } from './syllable.js';
 import { generateBigrams } from './bigram.js';
+import { charMask } from './charmask.js';
 
 /** データ側エントリ（1 item 分の事前計算） */
 export interface IndexEntry {
@@ -22,6 +23,10 @@ export interface IndexEntry {
   readonly kana: Normalized;
   /** かな空間の境界位置（spec 2.6） */
   readonly kanaBoundaries: ReadonlySet<number>;
+  /** 各空間の文字集合マスク（前置フィルタ用、空間が無効なら 0） */
+  readonly kanaMask: number;
+  readonly kunreiMask: number;
+  readonly hepburnMask: number;
   /** 訓令式 RomajiForm（romaji オプションで無効時 null） */
   readonly kunrei: RomajiForm | null;
   /** ヘボン式 RomajiForm（romaji オプションで無効時 null） */
@@ -33,13 +38,18 @@ export interface IndexEntry {
 /** 1 item からエントリを構築する */
 export function buildEntry(raw: string, refIndex: number, romaji: RomajiOption): IndexEntry {
   const kana = normalize(raw);
+  const kunrei = kunreiEnabled(romaji) ? toRomajiForm(kana.text, KUNREI) : null;
+  const hepburn = hepburnEnabled(romaji) ? toRomajiForm(kana.text, HEPBURN) : null;
   return {
     refIndex,
     raw,
     kana,
     kanaBoundaries: kanaBoundaries(kana.text),
-    kunrei: kunreiEnabled(romaji) ? toRomajiForm(kana.text, KUNREI) : null,
-    hepburn: hepburnEnabled(romaji) ? toRomajiForm(kana.text, HEPBURN) : null,
+    kanaMask: charMask(kana.text),
+    kunreiMask: kunrei ? charMask(kunrei.text) : 0,
+    hepburnMask: hepburn ? charMask(hepburn.text) : 0,
+    kunrei,
+    hepburn,
     bigrams: null,
   };
 }
