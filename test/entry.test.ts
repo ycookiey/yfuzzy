@@ -3,36 +3,36 @@ import { buildEntry, ensureBigrams } from '../src/entry.js';
 
 describe('buildEntry (spec 2.3)', () => {
   it('基本: 正規化・両式 RomajiForm・境界・refIndex', () => {
-    const e = buildEntry('ピカチュウ', 3, 'both');
+    const e = buildEntry('シャツ', 3, 'both');
     expect(e.refIndex).toBe(3);
-    expect(e.raw).toBe('ピカチュウ');
-    expect(e.kana.text).toBe('ピカチュウ');
-    expect(e.kunrei?.text).toBe('pikatyuu');
-    expect(e.hepburn?.text).toBe('pikachuu');
+    expect(e.raw).toBe('シャツ');
+    expect(e.kana.text).toBe('シャツ');
+    expect(e.kunrei?.text).toBe('syatu');
+    expect(e.hepburn?.text).toBe('shatsu');
     expect(e.kanaBoundaries).toEqual(new Set([0]));
     expect(e.bigrams).toBeNull();
   });
 
   it('ひらがな入力もカタカナへ正規化', () => {
-    const e = buildEntry('ぴか', 0, 'kunrei');
-    expect(e.kana.text).toBe('ピカ');
-    expect(e.kunrei?.text).toBe('pika');
+    const e = buildEntry('さくら', 0, 'kunrei');
+    expect(e.kana.text).toBe('サクラ');
+    expect(e.kunrei?.text).toBe('sakura');
   });
 
   it('romaji オプション: kunrei のみ生成', () => {
-    const e = buildEntry('ピカ', 0, 'kunrei');
+    const e = buildEntry('カメラ', 0, 'kunrei');
     expect(e.kunrei).not.toBeNull();
     expect(e.hepburn).toBeNull();
   });
 
   it('romaji オプション: hepburn のみ生成', () => {
-    const e = buildEntry('ピカ', 0, 'hepburn');
+    const e = buildEntry('カメラ', 0, 'hepburn');
     expect(e.kunrei).toBeNull();
     expect(e.hepburn).not.toBeNull();
   });
 
   it('romaji オプション: false は両 RomajiForm null', () => {
-    const e = buildEntry('ピカ', 0, false);
+    const e = buildEntry('カメラ', 0, false);
     expect(e.kunrei).toBeNull();
     expect(e.hepburn).toBeNull();
   });

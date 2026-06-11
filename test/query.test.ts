@@ -24,10 +24,10 @@ describe('normalizeQuery (spec 2.2 / 2.3)', () => {
   });
 
   it('カタカナ入力はそのまま正規化', () => {
-    const q = normalizeQuery('ピカ', 'both');
-    expect(q.kana).toBe('ピカ');
-    expect(q.kunrei).toBe('pika');
-    expect(q.hepburn).toBe('pika');
+    const q = normalizeQuery('カメラ', 'both');
+    expect(q.kana).toBe('カメラ');
+    expect(q.kunrei).toBe('kamera');
+    expect(q.hepburn).toBe('kamera');
   });
 
   it('romaji オプション: kunrei のみ', () => {

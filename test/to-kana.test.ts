@@ -49,7 +49,7 @@ describe('toKana (spec 2.2, vendored wanakana)', () => {
 
   it('変換できない英字（子音のみ等）はそのまま残す', () => {
     expect(toKana('msk')).toBe('msk');
-    expect(toKana('pika')).toBe('ぴか');
+    expect(toKana('kame')).toBe('かめ');
     expect(toKana('spd')).toBe('spd');
   });
 

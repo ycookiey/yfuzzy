@@ -25,7 +25,7 @@ describe('normalize (spec 2.1)', () => {
   });
 
   it('ひらがな → カタカナ', () => {
-    expect(normalize('ぴかちゅう').text).toBe('ピカチュウ');
+    expect(normalize('きゅうり').text).toBe('キュウリ');
     expect(normalize('ぁ').text).toBe('ァ'); // 小書きも対象
   });
 
