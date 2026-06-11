@@ -7,6 +7,10 @@
     "access": "public"
   },
   "author": "ycookiey",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ycookiey/yfuzzy.git"
+  },
   "keywords": [
     "fuzzy",
     "fuzzy-search",
