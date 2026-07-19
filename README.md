@@ -53,6 +53,18 @@ npm install @ycookiey/yfuzzy
 
 Node 18+ / ESM 専用。
 
+### ブラウザ (CDN)
+
+ビルドツールなしで使う場合は同梱の単一ファイル bundle を `<script>` で読み込む（グローバル `yfuzzy` が定義される）:
+
+```html
+<script src="https://unpkg.com/@ycookiey/yfuzzy@0.3.0/dist/yfuzzy.min.js"></script>
+<script>
+  yfuzzy.search('sinjuku', ['トウキョウ', 'シンジュク', 'シブヤ']);
+  // → [{ item: 'シンジュク', refIndex: 1, score: 1, tier: 1 }]
+</script>
+```
+
 ## 使い方
 
 ### 文字列配列
