@@ -21,6 +21,14 @@ import { charMask } from './charmask.js';
 export interface NormalizedQuery {
   /** 正規化カナ形 */
   readonly kana: string;
+  /** 正規化カナ形が1コードポイントか（tier 1 の1文字レンジ分離用、spec 4.1） */
+  readonly singleChar: boolean;
+  /**
+   * かな変換前のリテラル形（spec 2.2）。英数1コードポイントのクエリが変換で
+   * 形を変えた場合（母音 a/i/u/e/o と n）のみ非 null。tier 1 かな空間で並列照合し、
+   * ASCII データへの中間一致が変換で不可能になるのを防ぐ
+   */
+  readonly literal: string | null;
   /** 訓令式ローマ字（romaji オプションで無効時 null） */
   readonly kunrei: string | null;
   /** ヘボン式ローマ字（romaji オプションで無効時 null） */
@@ -35,11 +43,14 @@ export interface NormalizedQuery {
 
 /** クエリ文字列（1経路分）を正規化する */
 export function normalizeQuery(raw: string, romaji: RomajiOption): NormalizedQuery {
-  const kana = applyTransforms(toKana(applyTransforms(raw, 'preKana')), 'postKana');
+  const pre = applyTransforms(raw, 'preKana');
+  const kana = applyTransforms(toKana(pre), 'postKana');
   const kunrei = kunreiEnabled(romaji) ? kanaToRomaji(kana, KUNREI) : null;
   const hepburn = hepburnEnabled(romaji) ? kanaToRomaji(kana, HEPBURN) : null;
   return {
     kana,
+    singleChar: isSingleCodePoint(kana),
+    literal: /^[a-z0-9]$/.test(pre) && pre !== kana ? pre : null,
     kunrei,
     hepburn,
     kanaMask: charMask(kana),
@@ -47,6 +58,11 @@ export function normalizeQuery(raw: string, romaji: RomajiOption): NormalizedQue
     hepburnMask: hepburn !== null ? charMask(hepburn) : 0,
     bigrams: null,
   };
+}
+
+function isSingleCodePoint(s: string): boolean {
+  if (s.length === 0) return false;
+  return s.length === String.fromCodePoint(s.codePointAt(0)!).length;
 }
 
 /** tier 4 実行時に bigram を遅延生成してキャッシュする */

@@ -25,6 +25,11 @@ describe('エッジ: 1文字クエリ', () => {
   it('romaji も1文字（ア→a）で非一致なら []', () => {
     expect(search('ア', ['カミ'])).toEqual([]);
   });
+  it('英字1文字: 前方一致が中間一致より常に上位、母音は中間一致も拾う', () => {
+    const r = search('a', ['map', 'about']);
+    expect(r.map((x) => x.item)).toEqual(['about', 'map']);
+    expect(r.every((x) => x.tier === 1)).toBe(true);
+  });
 });
 
 describe('エッジ: データ側空文字は全 tier 非マッチ', () => {

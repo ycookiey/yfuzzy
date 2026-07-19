@@ -1,6 +1,7 @@
 // tier 1: 完全マッチ層（spec 4.1）。クエリ文字列がデータに連続して現れる。
-// サブマッチ4種を固定優先順で評価し、intraScore 最大を採用（同点は先順位＝表の記載順）。
-// 優先順（spec 5章タイブレーク）: かな前方 > かな部分 > romaji前方(訓令>ヘボン) > romaji部分(訓令>ヘボン)。
+// サブマッチを固定優先順で評価し、intraScore 最大を採用（同点は先順位＝表の記載順）。
+// 優先順（spec 5章タイブレーク）: かな前方 > かな部分 > リテラル前方 > リテラル部分 >
+// romaji前方(訓令>ヘボン) > romaji部分(訓令>ヘボン)。
 
 import type { Matcher, Space } from './types.js';
 import type { NormalizedQuery } from '../query.js';
@@ -27,10 +28,26 @@ function range(len: number, offset: number): number[] {
   return p;
 }
 
-function prefix(query: string, data: string, space: Space, factor: number): Candidate | null {
+// 1文字クエリ（正規化後1コードポイント）のレンジ分離（spec 4.1）:
+// 前方一致系 = 0.5 + raw/2 ∈ (0.5, 1]、部分一致系 = raw/2 ∈ (0, 0.5]。
+// coverage 差で短いデータの部分一致が長いデータの前方一致を逆転しないことを保証する。
+// 完全一致（coverage 1.0 の前方）は 1.0 のまま。
+function mapScore(raw: number, isPrefix: boolean, single: boolean): number {
+  if (!single) return raw;
+  return isPrefix ? 0.5 + raw / 2 : raw / 2;
+}
+
+function prefix(
+  query: string,
+  data: string,
+  space: Space,
+  factor: number,
+  single: boolean,
+): Candidate | null {
   if (query.length === 0 || data.length === 0) return null;
   if (!data.startsWith(query)) return null;
-  return { intraScore: (query.length / data.length) * factor, space, offset: 0, len: query.length };
+  const raw = (query.length / data.length) * factor;
+  return { intraScore: mapScore(raw, true, single), space, offset: 0, len: query.length };
 }
 
 function substring(
@@ -39,11 +56,13 @@ function substring(
   space: Space,
   factor: number,
   minLen: number,
+  single: boolean,
 ): Candidate | null {
   if (query.length < minLen || data.length === 0) return null;
   const idx = data.indexOf(query);
   if (idx <= 0) return null; // 0 = 前方一致（別サブマッチが担当）、<0 = 非一致
-  return { intraScore: (query.length / data.length) * factor, space, offset: idx, len: query.length };
+  const raw = (query.length / data.length) * factor;
+  return { intraScore: mapScore(raw, false, single), space, offset: idx, len: query.length };
 }
 
 export const tier1Exact: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
@@ -56,17 +75,23 @@ export const tier1Exact: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
   const kana = e.kana.text;
   const kunrei = e.kunrei?.text ?? '';
   const hepburn = e.hepburn?.text ?? '';
+  const single = q.singleChar;
 
   // 1. かな前方一致
-  consider(prefix(q.kana, kana, 'kana', KANA_PREFIX));
+  consider(prefix(q.kana, kana, 'kana', KANA_PREFIX, single));
   // 2. かな部分一致（かなは1文字でも可）
-  consider(substring(q.kana, kana, 'kana', KANA_SUBSTRING, 1));
-  // 3. romaji 前方一致（訓令 → ヘボン。前方は最小長条件なし）
-  if (q.kunrei !== null) consider(prefix(q.kunrei, kunrei, 'kunrei', ROMAJI_PREFIX));
-  if (q.hepburn !== null) consider(prefix(q.hepburn, hepburn, 'hepburn', ROMAJI_PREFIX * HEPBURN_PENALTY));
-  // 4. romaji 部分一致（訓令 → ヘボン。クエリ romaji 2文字以上）
-  if (q.kunrei !== null) consider(substring(q.kunrei, kunrei, 'kunrei', ROMAJI_SUBSTRING, 2));
-  if (q.hepburn !== null) consider(substring(q.hepburn, hepburn, 'hepburn', ROMAJI_SUBSTRING * HEPBURN_PENALTY, 2));
+  consider(substring(q.kana, kana, 'kana', KANA_SUBSTRING, 1, single));
+  // 3. リテラル前方/部分一致（かな変換で形が変わった英数1文字クエリのみ。かな空間）
+  if (q.literal !== null) {
+    consider(prefix(q.literal, kana, 'kana', KANA_PREFIX, single));
+    consider(substring(q.literal, kana, 'kana', KANA_SUBSTRING, 1, single));
+  }
+  // 4. romaji 前方一致（訓令 → ヘボン。前方は最小長条件なし）
+  if (q.kunrei !== null) consider(prefix(q.kunrei, kunrei, 'kunrei', ROMAJI_PREFIX, single));
+  if (q.hepburn !== null) consider(prefix(q.hepburn, hepburn, 'hepburn', ROMAJI_PREFIX * HEPBURN_PENALTY, single));
+  // 5. romaji 部分一致（訓令 → ヘボン。クエリ romaji 2文字以上）
+  if (q.kunrei !== null) consider(substring(q.kunrei, kunrei, 'kunrei', ROMAJI_SUBSTRING, 2, single));
+  if (q.hepburn !== null) consider(substring(q.hepburn, hepburn, 'hepburn', ROMAJI_SUBSTRING * HEPBURN_PENALTY, 2, single));
 
   if (best === null) return null;
   const c: Candidate = best;

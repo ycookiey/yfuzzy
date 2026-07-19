@@ -50,3 +50,45 @@ describe('tier1Exact (spec 4.1)', () => {
     expect(run('keki', 'ケーキ', false)).toBeNull();
   });
 });
+
+describe('tier1Exact: 1文字クエリ（リテラル並列照合 + レンジ分離、spec 2.2/4.1）', () => {
+  it('母音1文字はリテラルで ASCII 中間一致を拾う', () => {
+    const m = run('a', 'map');
+    expect(m).toMatchObject({ tier: 1, space: 'kana', positions: [1] });
+    expect(m!.intraScore).toBeCloseTo(((1 / 3) * 0.9) / 2, 10); // 部分一致系 = raw/2
+  });
+
+  it('n もリテラルで中間一致を拾う', () => {
+    const m = run('n', 'wind');
+    expect(m).toMatchObject({ tier: 1, space: 'kana', positions: [2] });
+    expect(m!.intraScore).toBeCloseTo(((1 / 4) * 0.9) / 2, 10);
+  });
+
+  it('リテラル前方一致は romaji 前方一致（×0.97）より係数が高い', () => {
+    const m = run('a', 'about');
+    expect(m).toMatchObject({ tier: 1, space: 'kana', positions: [0] });
+    expect(m!.intraScore).toBeCloseTo(0.5 + ((1 / 5) * 1.0) / 2, 10); // 前方一致系 = 0.5 + raw/2
+  });
+
+  it('かな入力にはリテラルを適用しない（ア は ASCII 中間一致しない）', () => {
+    expect(run('ア', 'map')).toBeNull();
+  });
+
+  it('前方一致系 (0.5,1] と部分一致系 (0,0.5] のレンジ分離（子音も対象）', () => {
+    expect(run('g', 'green')!.intraScore).toBeGreaterThan(0.5); // かな前方
+    expect(run('g', 'ring')!.intraScore).toBeLessThanOrEqual(0.5); // かな部分
+  });
+
+  it('coverage 差では逆転しない（長いデータの前方 > 短いデータの部分）', () => {
+    expect(run('a', 'aquamarine')!.intraScore).toBeGreaterThan(run('a', 'map')!.intraScore);
+  });
+
+  it('1文字完全一致は 1.0 のまま', () => {
+    expect(run('x', 'x')!.intraScore).toBe(1);
+    expect(run('カ', 'カ')!.intraScore).toBe(1);
+  });
+
+  it('2文字以上のクエリはレンジ分離しない（従来スコア）', () => {
+    expect(run('カミ', 'カミナリ')!.intraScore).toBeCloseTo(0.5, 10);
+  });
+});
