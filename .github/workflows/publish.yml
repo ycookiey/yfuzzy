@@ -15,12 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # npm は package-lock.json を作った手元と同じ版にそろえる（版で peer 依存の扱いが違い、
+      # 新しい npm では npm ci が lock 不一致で失敗しうる）。Node 24.11.0 同梱の npm 11.6.1 は
+      # trusted publishing の要件（npm 11.5.1 以上）を満たす
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 24.11.0
           registry-url: https://registry.npmjs.org
-      # trusted publishing は npm 11.5.1 以上が必要
-      - run: npm install -g npm@^11.5.1
+      - run: npm -v
       - name: タグと package.json の版が一致するか
         run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
       - run: npm ci
