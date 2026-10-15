@@ -6,6 +6,12 @@ import type { SeparatorConfig } from './expand.js';
 export type { RomajiOption } from './romaji/convert.js';
 export type { SeparatorConfig } from './expand.js';
 
+/**
+ * クエリの照合経路（spec 2.2）。'phonetic' はローマ字をかなに変換して照合、
+ * 'literal' は変換せず入力文字のまま照合、'both' は両経路の最良を採る
+ */
+export type MatchingOption = 'literal' | 'phonetic' | 'both';
+
 /** Index 構築時オプション（構築後は変更不可） */
 export interface IndexOptions<T> {
   /** item から検索対象文字列を取り出す。T[] のとき必須（オーバーロードで強制） */
@@ -14,6 +20,8 @@ export interface IndexOptions<T> {
   romaji?: RomajiOption;
   /** 区切り文字展開。default false */
   separatorExpansion?: SeparatorConfig;
+  /** クエリの照合経路。default 'both' */
+  matching?: MatchingOption;
 }
 
 /** 検索時オプション（per-call 上書き可） */

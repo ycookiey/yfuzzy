@@ -1,10 +1,11 @@
 // 実行モデル（spec 4.0）+ スコアリング・ソート・limit（spec 5章）。
 // 公開 API（index.ts）から呼ばれる内部エンジン。
 
-import { normalizeQuery, type NormalizedQuery } from './query.js';
+import { normalizeQuery, type NormalizedQuery, type QueryMode } from './query.js';
 import { expandQuery, type SeparatorConfig } from './expand.js';
 import type { IndexEntry } from './entry.js';
 import type { RomajiOption } from './romaji/convert.js';
+import type { MatchingOption } from './types.js';
 import type { Matcher, TierMatch } from './tiers/types.js';
 import { tier1Exact } from './tiers/tier1-exact.js';
 import { tier2Flexible } from './tiers/tier2-flexible.js';
@@ -19,10 +20,28 @@ const ALL_MATCHERS: readonly Matcher[] = [tier1Exact, tier2Flexible, tier3Typo, 
 export interface SearchConfig {
   readonly romaji: RomajiOption;
   readonly separatorExpansion: SeparatorConfig;
+  readonly matching: MatchingOption;
   readonly maxTier: number;
   readonly minScore: number;
   readonly limit: number | undefined;
   readonly includeMatches: boolean;
+}
+
+/** matching オプションに対応する照合経路（評価順。spec 2.2 / 5章） */
+function modesFor(matching: MatchingOption): readonly QueryMode[] {
+  if (matching === 'literal') return ['literal'];
+  if (matching === 'phonetic') return ['phonetic'];
+  return ['literal', 'phonetic'];
+}
+
+/**
+ * 展開経路文字列を照合経路ごとに正規化する。literal の kana が phonetic の kana と
+ * 同一なら（かなのみ・かな化できない英字のみのクエリ）phonetic が包含するため省く。
+ */
+function normalizePath(p: string, romaji: RomajiOption, modes: readonly QueryMode[]): NormalizedQuery[] {
+  const qs = modes.map((mode) => normalizeQuery(p, romaji, mode));
+  if (qs.length === 2 && qs[0]!.kana === qs[1]!.kana) return [qs[1]!];
+  return qs;
 }
 
 /** 1 item の照合結果（公開層が item を解決し SearchResult 化する。match は M8 の matches 用に保持） */
@@ -44,7 +63,7 @@ function finalScore(m: TierMatch): number {
 
 /**
  * 単一 tier の matcher を全経路で照合し、最良（score 降順、同点は経路順）を返す。
- * strict > により同点は先の経路（(c)>(a)>(b)）が残る。
+ * strict > により同点は先の経路が残る（経路順は runSearch の paths 構築順）。
  */
 function bestPathAtTier(
   matcher: Matcher,
@@ -82,7 +101,9 @@ export function runSearch(
 
   const pathStrings = expandQuery(trimmed, config.separatorExpansion);
   if (pathStrings.length === 0) return [];
-  const paths = pathStrings.map((p) => normalizeQuery(p, config.romaji));
+  // 経路順（同点タイブレーク順、spec 5章）: 展開経路 (c)>(a)>(b) の各々で literal > phonetic
+  const modes = modesFor(config.matching);
+  const paths = pathStrings.flatMap((p) => normalizePath(p, config.romaji, modes));
 
   const matchers = ALL_MATCHERS.slice(0, config.maxTier);
   const { limit, minScore } = config;

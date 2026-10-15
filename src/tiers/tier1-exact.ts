@@ -1,7 +1,7 @@
 // tier 1: 完全マッチ層（spec 4.1）。クエリ文字列がデータに連続して現れる。
 // サブマッチを固定優先順で評価し、intraScore 最大を採用（同点は先順位＝表の記載順）。
-// 優先順（spec 5章タイブレーク）: かな前方 > かな部分 > リテラル前方 > リテラル部分 >
-// romaji前方(訓令>ヘボン) > romaji部分(訓令>ヘボン)。
+// 優先順（spec 5章タイブレーク）: かな前方 > かな部分 > romaji前方(訓令>ヘボン) >
+// romaji部分(訓令>ヘボン)。
 
 import type { Matcher, Space } from './types.js';
 import type { NormalizedQuery } from '../query.js';
@@ -81,15 +81,10 @@ export const tier1Exact: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
   consider(prefix(q.kana, kana, 'kana', KANA_PREFIX, single));
   // 2. かな部分一致（かなは1文字でも可）
   consider(substring(q.kana, kana, 'kana', KANA_SUBSTRING, 1, single));
-  // 3. リテラル前方/部分一致（かな変換で形が変わった英数1文字クエリのみ。かな空間）
-  if (q.literal !== null) {
-    consider(prefix(q.literal, kana, 'kana', KANA_PREFIX, single));
-    consider(substring(q.literal, kana, 'kana', KANA_SUBSTRING, 1, single));
-  }
-  // 4. romaji 前方一致（訓令 → ヘボン。前方は最小長条件なし）
+  // 3. romaji 前方一致（訓令 → ヘボン。前方は最小長条件なし）
   if (q.kunrei !== null) consider(prefix(q.kunrei, kunrei, 'kunrei', ROMAJI_PREFIX, single));
   if (q.hepburn !== null) consider(prefix(q.hepburn, hepburn, 'hepburn', ROMAJI_PREFIX * HEPBURN_PENALTY, single));
-  // 5. romaji 部分一致（訓令 → ヘボン。クエリ romaji 2文字以上）
+  // 4. romaji 部分一致（訓令 → ヘボン。クエリ romaji 2文字以上）
   if (q.kunrei !== null) consider(substring(q.kunrei, kunrei, 'kunrei', ROMAJI_SUBSTRING, 2, single));
   if (q.hepburn !== null) consider(substring(q.hepburn, hepburn, 'hepburn', ROMAJI_SUBSTRING * HEPBURN_PENALTY, 2, single));
 

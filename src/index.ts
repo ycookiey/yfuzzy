@@ -18,6 +18,7 @@ export type {
   SearchIndex,
   RomajiOption,
   SeparatorConfig,
+  MatchingOption,
 } from './types.js';
 
 const DEFAULT_MAX_TIER = 3;
@@ -26,11 +27,13 @@ const DEFAULT_MIN_SCORE = 0;
 function resolveConfig(
   romaji: SearchConfig['romaji'],
   separatorExpansion: SearchConfig['separatorExpansion'],
+  matching: SearchConfig['matching'],
   opts: SearchOptions,
 ): SearchConfig {
   return {
     romaji,
     separatorExpansion,
+    matching,
     maxTier: opts.maxTier ?? DEFAULT_MAX_TIER,
     minScore: opts.minScore ?? DEFAULT_MIN_SCORE,
     limit: opts.limit,
@@ -55,6 +58,7 @@ export function createIndex<T>(
   const getText = options.getText ?? ((x: T) => x as unknown as string);
   const romaji = options.romaji ?? 'both';
   const separatorExpansion = options.separatorExpansion ?? false;
+  const matching = options.matching ?? 'both';
 
   // 構築時に SearchOptions のデフォルトを保持（per-call で上書き可）
   const defaults: SearchOptions = {
@@ -70,7 +74,7 @@ export function createIndex<T>(
     size: items.length,
     search(query: string, searchOptions: SearchOptions = {}): SearchResult<T>[] {
       const merged: SearchOptions = { ...defaults, ...searchOptions };
-      const config = resolveConfig(romaji, separatorExpansion, merged);
+      const config = resolveConfig(romaji, separatorExpansion, matching, merged);
       const hits = runSearch(query, entries, config);
       return hits.map((h) => {
         const result: SearchResult<T> = {

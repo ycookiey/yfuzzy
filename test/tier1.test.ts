@@ -8,6 +8,10 @@ function run(query: string, data: string, romaji: RomajiOption = 'both') {
   return tier1Exact(normalizeQuery(query, romaji), buildEntry(data, 0, romaji));
 }
 
+function runLiteral(query: string, data: string) {
+  return tier1Exact(normalizeQuery(query, 'both', 'literal'), buildEntry(data, 0, 'both'));
+}
+
 describe('tier1Exact (spec 4.1)', () => {
   it('かな完全一致 → intraScore 1.0', () => {
     expect(run('カミ', 'カミ')).toEqual({
@@ -51,27 +55,32 @@ describe('tier1Exact (spec 4.1)', () => {
   });
 });
 
-describe('tier1Exact: 1文字クエリ（リテラル並列照合 + レンジ分離、spec 2.2/4.1）', () => {
-  it('母音1文字はリテラルで ASCII 中間一致を拾う', () => {
-    const m = run('a', 'map');
+describe('tier1Exact: 1文字クエリ（literal 経路 + レンジ分離、spec 2.2/4.1）', () => {
+  it('母音1文字は literal 経路で ASCII 中間一致を拾う', () => {
+    const m = runLiteral('a', 'map');
     expect(m).toMatchObject({ tier: 1, space: 'kana', positions: [1] });
     expect(m!.intraScore).toBeCloseTo(((1 / 3) * 0.9) / 2, 10); // 部分一致系 = raw/2
   });
 
-  it('n もリテラルで中間一致を拾う', () => {
-    const m = run('n', 'wind');
+  it('n も literal 経路で中間一致を拾う', () => {
+    const m = runLiteral('n', 'wind');
     expect(m).toMatchObject({ tier: 1, space: 'kana', positions: [2] });
     expect(m!.intraScore).toBeCloseTo(((1 / 4) * 0.9) / 2, 10);
   });
 
-  it('リテラル前方一致は romaji 前方一致（×0.97）より係数が高い', () => {
-    const m = run('a', 'about');
-    expect(m).toMatchObject({ tier: 1, space: 'kana', positions: [0] });
-    expect(m!.intraScore).toBeCloseTo(0.5 + ((1 / 5) * 1.0) / 2, 10); // 前方一致系 = 0.5 + raw/2
+  it('phonetic 経路では母音1文字はかな化され ASCII 中間一致しない', () => {
+    expect(run('a', 'map')).toBeNull();
   });
 
-  it('かな入力にはリテラルを適用しない（ア は ASCII 中間一致しない）', () => {
-    expect(run('ア', 'map')).toBeNull();
+  it('literal 経路の前方一致は romaji 前方一致（×0.97）より高い', () => {
+    const m = runLiteral('a', 'about');
+    expect(m).toMatchObject({ tier: 1, space: 'kana', positions: [0] });
+    expect(m!.intraScore).toBeCloseTo(0.5 + ((1 / 5) * 1.0) / 2, 10); // 前方一致系 = 0.5 + raw/2
+    expect(m!.intraScore).toBeGreaterThan(run('a', 'about')!.intraScore);
+  });
+
+  it('かな入力は literal 経路でもかなのまま（ア は ASCII 中間一致しない）', () => {
+    expect(runLiteral('ア', 'map')).toBeNull();
   });
 
   it('前方一致系 (0.5,1] と部分一致系 (0,0.5] のレンジ分離（子音も対象）', () => {
@@ -80,7 +89,9 @@ describe('tier1Exact: 1文字クエリ（リテラル並列照合 + レンジ分
   });
 
   it('coverage 差では逆転しない（長いデータの前方 > 短いデータの部分）', () => {
-    expect(run('a', 'aquamarine')!.intraScore).toBeGreaterThan(run('a', 'map')!.intraScore);
+    expect(runLiteral('a', 'aquamarine')!.intraScore).toBeGreaterThan(
+      runLiteral('a', 'map')!.intraScore,
+    );
   });
 
   it('1文字完全一致は 1.0 のまま', () => {

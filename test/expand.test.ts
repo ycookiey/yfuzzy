@@ -11,7 +11,7 @@ describe('expandQuery (spec 3章)', () => {
     expect(expandQuery('カミナリ', true)).toEqual(['カミナリ']);
   });
 
-  it('3経路: (c)リテラル → (a)除去 → (b)境界', () => {
+  it('3経路: (c)原文 → (a)除去 → (b)境界', () => {
     expect(expandQuery('レイ-クッシュ', true)).toEqual([
       'レイ-クッシュ', // (c)
       'レイクッシュ', // (a)
