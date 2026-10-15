@@ -7,7 +7,7 @@ describe('search 公開 API（M5: tier1 + pipeline）', () => {
     expect(r.map((x) => x.item)).toEqual(['カミ', 'カミナリ']);
     expect(r[0]!.score).toBeCloseTo(1, 10);
     expect(r[0]!.tier).toBe(1);
-    expect(r[1]!.score).toBeCloseTo(0.875, 10); // (3 + 0.5)/4
+    expect(r[1]!.score).toBeCloseTo((3 + 0.875) / 4, 10); // 先頭の段 intraScore = (3 + 0.5)/4
   });
 
   it('ローマ字入力で検索できる', () => {
@@ -37,8 +37,8 @@ describe('search 公開 API（M5: tier1 + pipeline）', () => {
   });
 
   it('minScore でフィルタ', () => {
-    // 'カミ' 完全一致=1.0、'カミナリ' 前方=0.875。minScore 0.9 で後者を除外
-    const r = search('カミ', ['カミナリ', 'カミ'], { minScore: 0.9 });
+    // 'カミ' 完全一致=1.0、'カミナリ' 前方=0.96875。minScore 0.98 で後者を除外
+    const r = search('カミ', ['カミナリ', 'カミ'], { minScore: 0.98 });
     expect(r.map((x) => x.item)).toEqual(['カミ']);
   });
 

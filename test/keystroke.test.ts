@@ -67,9 +67,9 @@ describe('打鍵の解釈: 英単語を IME オンで打った入力（spec 2.2�
     expect(top(q)?.item).toBe(expected);
   });
 
-  it('飛び飛びの頭文字（ncal を IME で打った んかl / Shift で N を打った Nかl）', () => {
-    expect(top('んかl')).toMatchObject({ item: 'New Calendar', tier: 2 });
-    expect(top('Nかl')).toMatchObject({ item: 'New Calendar', tier: 2 });
+  it('頭文字（ncal を IME で打った んかl / Shift で N を打った Nかl）', () => {
+    expect(top('んかl')).toMatchObject({ item: 'New Calendar', tier: 1 });
+    expect(top('Nかl')).toMatchObject({ item: 'New Calendar', tier: 1 });
   });
 
   it('ハイライトは打った英字に対応する元の文字列の範囲', () => {

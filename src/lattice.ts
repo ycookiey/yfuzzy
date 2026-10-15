@@ -201,11 +201,13 @@ export interface Expanded {
   readonly X: number;
   /** 状態 x の経路長 */
   readonly depth: Int32Array;
-  /** 状態 x に入る辺 [inStart[x] .. inStart[x+1]) の前状態・文字コード・charMask ビット */
+  /** 状態 x に入る辺 [inStart[x] .. inStart[x+1]) の前状態・文字コード・charMask ビット・打鍵の辺か */
   readonly inStart: Int32Array;
   readonly inFrom: Int32Array;
   readonly inCh: Int32Array;
   readonly inBit: Int32Array;
+  /** 入り辺が打鍵の辺か */
+  readonly inKs: Uint8Array;
   /** 終端の状態と経路長（経路長昇順） */
   readonly finals: readonly [x: number, m: number][];
 }
@@ -232,11 +234,11 @@ export function expandByDepth(lat: Lattice): Expanded {
   const xid = (v: number, d: number): number => base[v]! + depths[v]!.indexOf(d);
   const depth = new Int32Array(X);
   for (let v = 0; v < V; v++) for (const d of depths[v]!) depth[xid(v, d)] = d;
-  const lists: [number, number, number][][] = Array.from({ length: X }, () => []);
+  const lists: [number, number, number, number][][] = Array.from({ length: X }, () => []);
   for (let e = 0; e < lat.from.length; e++) {
     const u = lat.from[e]!;
     const v = lat.to[e]!;
-    for (const d of depths[u]!) lists[xid(v, d + 1)]!.push([xid(u, d), lat.ch[e]!.charCodeAt(0), lat.bit[e]!]);
+    for (const d of depths[u]!) lists[xid(v, d + 1)]!.push([xid(u, d), lat.ch[e]!.charCodeAt(0), lat.bit[e]!, lat.ks[e]!]);
   }
   const inStart = new Int32Array(X + 1);
   for (let x = 0; x < X; x++) inStart[x + 1] = inStart[x]! + lists[x]!.length;
@@ -244,16 +246,18 @@ export function expandByDepth(lat: Lattice): Expanded {
   const inFrom = new Int32Array(total);
   const inCh = new Int32Array(total);
   const inBit = new Int32Array(total);
+  const inKs = new Uint8Array(total);
   let p = 0;
   for (const list of lists) {
-    for (const [y, c, b] of list) {
+    for (const [y, c, b, k] of list) {
       inFrom[p] = y;
       inCh[p] = c;
-      inBit[p++] = b;
+      inBit[p] = b;
+      inKs[p++] = k;
     }
   }
   const finals = depths[lat.final]!.map((m) => [xid(lat.final, m), m] as [number, number]);
-  const ex: Expanded = { X, depth, inStart, inFrom, inCh, inBit, finals };
+  const ex: Expanded = { X, depth, inStart, inFrom, inCh, inBit, inKs, finals };
   expandedCache.set(lat, ex);
   return ex;
 }

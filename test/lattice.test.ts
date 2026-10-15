@@ -65,21 +65,37 @@ const plain = (s: string): NormalizedQuery => ({
   singleChar: false,
 });
 
-// tier 1 の総当たり: 打鍵経路は romaji 係数・部分一致は2文字以上（spec 4.1）
-function bruteTier1(ps: [string, boolean][], data: string, single: boolean): number | null {
-  const map = (raw: number, pre: boolean) => (single ? (pre ? 0.5 + raw / 2 : raw / 2) : raw);
+// 頭文字の一致の総当たり: 各文字を単語の頭から始め、続き（+1）か後ろの単語の頭に置けるか
+function bruteInitials(s: string, data: string, heads: ReadonlySet<number>): boolean {
+  const place = (i: number, prev: number): boolean => {
+    if (i === s.length) return true;
+    for (let p = prev + 1; p < data.length; p++) {
+      if (data[p] !== s[i]) continue;
+      const ok = i === 0 ? heads.has(p) : p === prev + 1 || heads.has(p);
+      if (ok && place(i + 1, p)) return true;
+    }
+    return false;
+  };
+  return place(0, -1);
+}
+
+// tier 1 の総当たり: 段 =（先頭 3 / 単語の頭 2 / 頭文字 1 / 単語の途中 0）、intraScore = (段 + 素点) / 4。
+// 打鍵経路は romaji 係数・部分一致は2文字以上（spec 4.1）
+function bruteTier1(ps: [string, boolean][], data: string, heads: ReadonlySet<number>): number | null {
   let best: number | null = null;
   const N = data.length;
+  const take = (cls: number, raw: number): void => {
+    const v = (cls + raw) / 4;
+    if (best === null || v > best) best = v;
+  };
   for (const [s, ks] of ps) {
-    if (data.startsWith(s)) {
-      const v = map((s.length / N) * (ks ? 0.97 : 1), true);
-      if (best === null || v > best) best = v;
+    const pf = ks ? 0.97 : 1;
+    const sf = ks ? 0.87 : 0.9;
+    if (data.startsWith(s)) take(3, (s.length / N) * pf);
+    if (!ks || s.length >= 2) {
+      for (let i = data.indexOf(s, 1); i > 0; i = data.indexOf(s, i + 1)) take(heads.has(i) ? 2 : 0, (s.length / N) * sf);
     }
-    const i = data.indexOf(s, 1);
-    if (i > 0 && (!ks || s.length >= 2)) {
-      const v = map((s.length / N) * (ks ? 0.87 : 0.9), false);
-      if (best === null || v > best) best = v;
-    }
+    if (s.length >= 2 && heads.size >= 2 && bruteInitials(s, data, heads)) take(1, (s.length / N) * sf);
   }
   return best;
 }
@@ -92,7 +108,7 @@ function lcg(seed: number): () => number {
 describe('ラティス照合は全経路の総当たりと一致する（spec 2.2 / 4.1–4.3）', () => {
   const KANA = [...'かきくけこさしすせそちつてとなにのはひふまみむめもらりるれろやゆよわんあいうえおがじだばぱぁぃぇっゃゅょー'];
   const LATIN = [...'abcdefghijklmnopqrstuvwxyz'];
-  const WORDS = ['calendar', 'qiita', 'github', 'new calendar', 'kitchen', 'shinjuku', 'tsukuba', 'cherry', 'quiet', 'ceremony', 'jinja', 'xerox', 'lyric', 'whale', 'thermo', 'kyoto-city', "rock'n", 'sushi bar', 'カレンダー', 'シンジュクeki', 'abc-ー'];
+  const WORDS = ['Apple Cider', 'AirCooler', 'gold case', 'New Calendar', 'calendar', 'qiita', 'github', 'new calendar', 'kitchen', 'shinjuku', 'tsukuba', 'cherry', 'quiet', 'ceremony', 'jinja', 'xerox', 'lyric', 'whale', 'thermo', 'kyoto-city', "rock'n", 'sushi bar', 'カレンダー', 'シンジュクeki', 'abc-ー'];
 
   it('乱択 1500 組（tier 1 / 2 / 3）', () => {
     const r = lcg(42);
@@ -115,7 +131,7 @@ describe('ラティス照合は全経路の総当たりと一致する（spec 2.
       const ctx = `${q} / ${data}`;
 
       const t1 = tier1Exact(lq, e)?.intraScore ?? null;
-      const b1 = bruteTier1(ps, e.kana.text, lq.singleChar);
+      const b1 = bruteTier1(ps, e.kana.text, e.kanaBoundaries);
       expect(t1 === null, ctx).toBe(b1 === null);
       if (t1 !== null) expect(t1, ctx).toBeCloseTo(b1!, 12);
 
