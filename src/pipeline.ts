@@ -37,10 +37,14 @@ function modesFor(matching: MatchingOption): readonly QueryMode[] {
 /**
  * 展開経路文字列を照合経路ごとに正規化する。literal の kana が phonetic の kana と
  * 同一なら（かなのみ・かな化できない英字のみのクエリ）phonetic が包含するため省く。
+ * 打鍵ラティスがあれば、打鍵の文字を含むデータでのみ照合するよう shadowed を立てる。
  */
 function normalizePath(p: string, romaji: RomajiOption, modes: readonly QueryMode[]): NormalizedQuery[] {
   const qs = modes.map((mode) => normalizeQuery(p, romaji, mode));
-  if (qs.length === 2 && qs[0]!.kana === qs[1]!.kana) return [qs[1]!];
+  if (qs.length === 2 && qs[0]!.kana === qs[1]!.kana) {
+    if (qs[0]!.lattice === null) return [qs[1]!];
+    qs[0]!.shadowed = true;
+  }
   return qs;
 }
 

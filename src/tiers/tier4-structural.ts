@@ -14,6 +14,7 @@ const BETA = 0.2; // データ側にしかない bigram の罰則（軽い）
 const THRESHOLD = 0.3;
 
 export const tier4Structural: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
+  if (q.shadowed) return null; // 同一 kana の phonetic 経路が同じ結果を出す
   const qb = ensureQueryBigrams(q);
   const db = ensureBigrams(e);
   if (qb.size === 0 || db.size === 0) return null;

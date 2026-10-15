@@ -31,6 +31,8 @@ export interface IndexEntry {
   readonly kunrei: RomajiForm | null;
   /** ヘボン式 RomajiForm（romaji オプションで無効時 null） */
   readonly hepburn: RomajiForm | null;
+  /** 打鍵の文字（英小文字・'・-）を含むか。含まなければ打鍵ラティスの打鍵経路は一致し得ない */
+  readonly hasKeystrokeChar: boolean;
   /** bigram 集合（tier 4 用、遅延生成） */
   bigrams: Set<string> | null;
 }
@@ -50,6 +52,7 @@ export function buildEntry(raw: string, refIndex: number, romaji: RomajiOption):
     hepburnMask: hepburn ? charMask(hepburn.text) : 0,
     kunrei,
     hepburn,
+    hasKeystrokeChar: /[a-z'-]/.test(kana.text),
     bigrams: null,
   };
 }

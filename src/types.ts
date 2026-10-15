@@ -8,7 +8,7 @@ export type { SeparatorConfig } from './expand.js';
 
 /**
  * クエリの照合経路（spec 2.2）。'phonetic' はローマ字をかなに変換して照合、
- * 'literal' は変換せず入力文字のまま照合、'both' は両経路の最良を採る
+ * 'literal' は変換せず入力文字のまま照合（かなはそれを打った打鍵とも照合）、'both' は両経路の最良を採る
  */
 export type MatchingOption = 'literal' | 'phonetic' | 'both';
 

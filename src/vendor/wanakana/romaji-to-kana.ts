@@ -11,6 +11,7 @@
 //   3. 出力は常にひらがな。大文字→カタカナ変換は移植せず、カタカナ化は
 //      呼び出し側（normalize step5）に委ねる。
 //   4. memoize-one / dequal / customMapping / useObsoleteKana は不要のため除外。
+//   5. 変換木の全エントリを列挙する romajiKanaPairs を追加（打鍵の逆引き用、spec 2.2）。
 //
 // 元実装: src/toKana.js, src/utils/kanaMapping.js, src/utils/romajiToKanaMap.js
 // =============================================================================
@@ -219,4 +220,23 @@ export function romajiToKana(input: string): string {
   return applyMapping(input.toLowerCase(), getTree())
     .map((token) => token[2] ?? '')
     .join('');
+}
+
+/**
+ * 変換木の全エントリ（打鍵列, かな）を列挙する。出力がかなのみのエントリに限る。
+ * 打鍵の逆引き（keystroke.ts）用（改変点5）。
+ */
+export function romajiKanaPairs(): [keys: string, kana: string][] {
+  const out: [string, string][] = [];
+  const walk = (node: Tree, path: string): void => {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === '') {
+        if (path !== '' && /^[ぁ-ゖヵヶ]+$/.test(value)) out.push([path, value]);
+      } else {
+        walk(value, path + key);
+      }
+    }
+  };
+  walk(getTree(), '');
+  return out;
 }

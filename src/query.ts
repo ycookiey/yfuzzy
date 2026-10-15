@@ -16,6 +16,7 @@ import {
 import { kanaToRomaji } from './syllable.js';
 import { generateBigrams } from './bigram.js';
 import { charMask } from './charmask.js';
+import { buildLattice, type Lattice } from './lattice.js';
 
 /** クエリの照合経路（spec 2.2） */
 export type QueryMode = 'phonetic' | 'literal';
@@ -34,6 +35,13 @@ export interface NormalizedQuery {
   readonly kanaMask: number;
   readonly kunreiMask: number;
   readonly hepburnMask: number;
+  /** 打鍵ラティス（literal 経路でかなを含むとき。それ以外は null で kana を文字列照合） */
+  readonly lattice: Lattice | null;
+  /**
+   * literal 経路で kana が同じ展開経路の phonetic と同一か。打鍵の文字を含まないデータでは
+   * ラティスは kana の文字列照合に帰着し phonetic が包含するため、照合を省く（pipeline が設定）
+   */
+  shadowed: boolean;
   /** bigram 集合（tier 4 用、遅延生成） */
   bigrams: Set<string> | null;
 }
@@ -58,6 +66,8 @@ export function normalizeQuery(
     kanaMask: charMask(kana),
     kunreiMask: kunrei !== null ? charMask(kunrei) : 0,
     hepburnMask: hepburn !== null ? charMask(hepburn) : 0,
+    lattice: phonetic ? null : buildLattice(kana),
+    shadowed: false,
     bigrams: null,
   };
 }
