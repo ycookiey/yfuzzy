@@ -68,3 +68,11 @@ describe('tier2 公開 API（M6）', () => {
     expect(r[0]!.tier).toBe(2);
   });
 });
+
+describe('tier2Flexible: 打鍵ラティス（spec 2.2 / 4.2）', () => {
+  it('経路ごとに intraScore の最良を採る（せ = se / ce: gold case の c…e を採る）', () => {
+    const m = tier2Flexible(normalizeQuery('せ', 'both', 'literal'), buildEntry('gold case', 0, 'both'));
+    // ce: c が単語の頭（境界 1/2）、se: 境界 0 で連続 → ce のほうが intraScore が高い
+    expect(m).toMatchObject({ tier: 2, space: 'kana', positions: [5, 8] });
+  });
+});

@@ -5,7 +5,7 @@
 import type { Matcher, Space } from './types.js';
 import type { NormalizedQuery } from '../query.js';
 import type { IndexEntry } from '../entry.js';
-import { expandByDepth, latticeFeasible, latticeIsSubsequence, type Lattice } from '../lattice.js';
+import { latticeFeasible, latticeIsSubsequence, type Lattice } from '../lattice.js';
 
 // DP 定数（spec 4.2、【調整対象】）
 const MATCH = 16;
@@ -156,12 +156,10 @@ function scoreFromPositions(
   return W_BOUNDARY * boundaryRate + W_CONTINUITY * continuity + W_START * startTerm;
 }
 
-let predBuf = new Int32Array(0);
-
 /**
- * 位置選択 DP のラティス版。状態を（節点, 経路長）に展開して位相順に辿り、
- * 経路長 m ごとに DP スコア最大の割り付けを選ぶ。各 m の採用位置から intraScore を求め、
- * 最大のものを返す（同点は短い経路）。経路長 MIN_LEN 未満は対象外。
+ * ラティス版: 始点→終端の各経路を文字列クエリとして位置選択 DP にかけ、intraScore 最大を返す
+ * （同点は先に辿った経路）。データの subsequence になり得ない経路は辿る途中で打ち切る
+ * （経路の接頭辞が subsequence かは最左一致の位置で判定でき、これは厳密）。経路長 MIN_LEN 未満は対象外。
  */
 function latticeBest(
   lat: Lattice,
@@ -170,87 +168,28 @@ function latticeBest(
   boundaries: ReadonlySet<number>,
   single: boolean,
 ): { intraScore: number; positions: number[] } | null {
-  const N = t.length;
-  if (N === 0) return null;
+  if (t.length === 0) return null;
   if (!latticeFeasible(lat, dMask)) return null;
   if (!latticeIsSubsequence(lat, t, single)) return null;
-  const ex = expandByDepth(lat);
-  const { X, inStart, inFrom, inCh } = ex;
-  const cols = N + 1;
-  ensureScratch(X * cols);
-  if (predBuf.length < X * cols) predBuf = new Int32Array(X * cols);
-  const dp = dpBuf;
-  const matched = matchedBuf;
-  const pred = predBuf;
-  for (let j = 0; j <= N; j++) {
-    dp[j] = 0; // 始点: データ先頭の読み飛ばしは無料
-    matched[j] = 0;
-  }
-  for (let x = 1; x < X; x++) {
-    dp[x * cols] = NEG;
-    matched[x * cols] = 0;
-  }
-  for (let j = 1; j <= N; j++) {
-    const c = t.charCodeAt(j - 1);
-    const isBoundary = boundaries.has(j - 1);
-    for (let x = 1; x < X; x++) {
-      const cell = x * cols + j;
-      let best = NEG;
-      let bestMatched = 0;
-      let bestPred = -1;
-      const prevSkip = dp[cell - 1]!;
-      if (prevSkip > NEG) best = prevSkip + (matched[cell - 1]! ? GAP_START : GAP_EXTEND);
-      for (let k = inStart[x]!; k < inStart[x + 1]!; k++) {
-        if (inCh[k] !== c) continue;
-        const y = inFrom[k]!;
-        const diag = dp[y * cols + j - 1]!;
-        if (diag <= NEG) continue;
-        let bonus = 0;
-        if (isBoundary) bonus += BOUNDARY;
-        if (matched[y * cols + j - 1]!) bonus += CONSECUTIVE;
-        if (y === 0) bonus += FIRST_CHAR;
-        const ms = diag + MATCH + bonus;
-        // 同点は match 側（skip より優先）、match 同士は先の辺
-        if (bestMatched ? ms > best : ms >= best) {
-          best = ms;
-          bestMatched = 1;
-          bestPred = y;
-        }
-      }
-      dp[cell] = best;
-      matched[cell] = bestMatched;
-      pred[cell] = bestPred;
+  let best: { intraScore: number; positions: number[] } | null = null;
+  const walk = (v: number, path: string, next: number): void => {
+    if (v === lat.final) {
+      if (path.length < MIN_LEN) return;
+      const positions = selectPositions(path, t, boundaries);
+      if (positions === null) return;
+      const intraScore = scoreFromPositions(positions, path.length, t.length, boundaries);
+      if (best === null || intraScore > best.intraScore) best = { intraScore, positions };
+      return;
     }
-  }
-  let result: { intraScore: number; positions: number[] } | null = null;
-  for (const [xf, m] of ex.finals) {
-    if (m < MIN_LEN) continue;
-    const frow = xf * cols;
-    let bestJ = -1;
-    let bestScore = NEG;
-    for (let j = 1; j <= N; j++) {
-      if (dp[frow + j]! > bestScore) {
-        bestScore = dp[frow + j]!;
-        bestJ = j;
-      }
+    for (let k = lat.outStart[v]!; k < lat.outStart[v + 1]!; k++) {
+      const e = lat.outEdges[k]!;
+      const c = lat.ch[e]!;
+      const at = t.indexOf(c, next);
+      if (at >= 0) walk(lat.to[e]!, path + c, at + 1);
     }
-    if (bestJ < 0) continue;
-    const positions: number[] = [];
-    let x = xf;
-    let j = bestJ;
-    while (x !== 0 && j > 0) {
-      const cell = x * cols + j;
-      if (matched[cell]!) {
-        positions.push(j - 1);
-        x = pred[cell]!;
-      }
-      j--;
-    }
-    positions.reverse();
-    const intraScore = scoreFromPositions(positions, m, N, boundaries);
-    if (result === null || intraScore > result.intraScore) result = { intraScore, positions };
-  }
-  return result;
+  };
+  walk(0, '', 0);
+  return best;
 }
 
 interface Candidate {
