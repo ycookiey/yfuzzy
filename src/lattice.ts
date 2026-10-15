@@ -21,7 +21,14 @@ export interface Lattice {
   readonly outEdges: Int32Array;
   /** 始点から出る辺の文字 */
   readonly firstChars: ReadonlySet<string>;
+  /** 同じく文字コード（data.charCodeAt と照らす） */
+  readonly firstCodes: ReadonlySet<number>;
+  /** 始点→終端の経路（文字列, 打鍵の辺を通るか）。PATH_LIMIT 本を超えるときは null（状態遷移で照合する） */
+  readonly paths: readonly (readonly [string, boolean])[] | null;
 }
+
+/** 列挙しておく経路の上限 */
+const PATH_LIMIT = 32;
 
 /** 正規化済み literal 文字列からラティスを作る。打鍵の辺が無ければ null（文字列照合で足りる） */
 export function buildLattice(s: string): Lattice | null {
@@ -94,7 +101,20 @@ export function buildLattice(s: string): Lattice | null {
   for (let e = 0; e < m; e++) outEdges[e] = e; // 辺は from 昇順に並んでいる
   const firstChars = new Set<string>();
   for (let k = outStart[0]!; k < outStart[1]!; k++) firstChars.add(ch[outEdges[k]!]!);
-  return { nodeCount: V, final: remap[n]!, from, to, ch, ks, bit, outStart, outEdges, firstChars };
+  const firstCodes = new Set([...firstChars].map((c) => c.charCodeAt(0)));
+  // 経路が少なければ列挙しておく（連続一致を文字列の startsWith / indexOf で調べられる）
+  let paths: [string, boolean][] | null = [];
+  const walk = (v: number, s: string, k: boolean): void => {
+    if (paths === null) return;
+    if (v === remap[n]) {
+      if (paths.length >= PATH_LIMIT) paths = null;
+      else paths.push([s, k]);
+      return;
+    }
+    for (let e = outStart[v]!; e < outStart[v + 1]!; e++) walk(to[e]!, s + ch[e]!, k || ks[e] === 1);
+  };
+  walk(0, '', false);
+  return { nodeCount: V, final: remap[n]!, from, to, ch, ks, bit, outStart, outEdges, firstChars, firstCodes, paths };
 }
 
 let reachBuf = new Uint8Array(0);
@@ -208,6 +228,11 @@ export interface Expanded {
   readonly inBit: Int32Array;
   /** 入り辺が打鍵の辺か */
   readonly inKs: Uint8Array;
+  /** 状態 x から出る辺 [outStart[x] .. outStart[x+1]) の行き先・文字コード・打鍵の辺か */
+  readonly outStart: Int32Array;
+  readonly outTo: Int32Array;
+  readonly outCh: Int32Array;
+  readonly outKs: Uint8Array;
   /** 終端の状態と経路長（経路長昇順） */
   readonly finals: readonly [x: number, m: number][];
 }
@@ -256,8 +281,23 @@ export function expandByDepth(lat: Lattice): Expanded {
       inKs[p++] = k;
     }
   }
+  const outStart = new Int32Array(X + 1);
+  for (let k = 0; k < total; k++) outStart[inFrom[k]! + 1]!++;
+  for (let x = 0; x < X; x++) outStart[x + 1]! += outStart[x]!;
+  const fill = outStart.slice(0, X);
+  const outTo = new Int32Array(total);
+  const outCh = new Int32Array(total);
+  const outKs = new Uint8Array(total);
+  for (let x = 0; x < X; x++) {
+    for (let k = inStart[x]!; k < inStart[x + 1]!; k++) {
+      const o = fill[inFrom[k]!]!++;
+      outTo[o] = x;
+      outCh[o] = inCh[k]!;
+      outKs[o] = inKs[k]!;
+    }
+  }
   const finals = depths[lat.final]!.map((m) => [xid(lat.final, m), m] as [number, number]);
-  const ex: Expanded = { X, depth, inStart, inFrom, inCh, inBit, inKs, finals };
+  const ex: Expanded = { X, depth, inStart, inFrom, inCh, inBit, inKs, outStart, outTo, outCh, outKs, finals };
   expandedCache.set(lat, ex);
   return ex;
 }

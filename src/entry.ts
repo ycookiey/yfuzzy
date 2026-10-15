@@ -26,6 +26,10 @@ export interface IndexEntry {
   /** romaji 空間の単語の頭（単語の頭のかなから始まる音節の先頭。tier 1 の段、spec 4.1） */
   readonly kunreiHeads: ReadonlySet<number>;
   readonly hepburnHeads: ReadonlySet<number>;
+  /** 上の各単語の頭の昇順の一覧（tier 1 の頭文字の一致用） */
+  readonly kanaHeadList: readonly number[];
+  readonly kunreiHeadList: readonly number[];
+  readonly hepburnHeadList: readonly number[];
   /** 各空間の文字集合マスク（前置フィルタ用、空間が無効なら 0） */
   readonly kanaMask: number;
   readonly kunreiMask: number;
@@ -64,19 +68,28 @@ function romajiHeads(form: RomajiForm | null, heads: ReadonlySet<number>): Reado
   return out;
 }
 
+function sorted(set: ReadonlySet<number>): number[] {
+  return [...set].sort((a, b) => a - b);
+}
+
 /** 1 item からエントリを構築する */
 export function buildEntry(raw: string, refIndex: number, romaji: RomajiOption): IndexEntry {
   const kana = normalize(raw);
   const kunrei = kunreiEnabled(romaji) ? toRomajiForm(kana.text, KUNREI) : null;
   const hepburn = hepburnEnabled(romaji) ? toRomajiForm(kana.text, HEPBURN) : null;
   const heads = wordHeads(kana, raw);
+  const kunreiHeads = romajiHeads(kunrei, heads);
+  const hepburnHeads = romajiHeads(hepburn, heads);
   return {
     refIndex,
     raw,
     kana,
     kanaBoundaries: heads,
-    kunreiHeads: romajiHeads(kunrei, heads),
-    hepburnHeads: romajiHeads(hepburn, heads),
+    kunreiHeads,
+    hepburnHeads,
+    kanaHeadList: sorted(heads),
+    kunreiHeadList: sorted(kunreiHeads),
+    hepburnHeadList: sorted(hepburnHeads),
     kanaMask: charMask(kana.text),
     kunreiMask: kunrei ? charMask(kunrei.text) : 0,
     hepburnMask: hepburn ? charMask(hepburn.text) : 0,

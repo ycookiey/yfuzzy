@@ -70,186 +70,253 @@ function substring(
   return contiguous(INNER, raw, space, first, query.length);
 }
 
+// 頭文字の一致の作業領域（呼び出しごとの確保を避けて使い回す）
+let iniOk = new Uint8Array(0);
+let iniSuf = new Uint8Array(0);
+
 /**
  * 頭文字の一致: クエリの各文字を、単語の頭から始め、直前の続き（+1）か後ろの単語の頭に置けるか。
- * 置き方は先頭寄り・続き優先で決める。単語の頭が先頭だけのデータは前方一致と同じため扱わない。
+ * = クエリを、単語の頭から始まる連続一致の断片に分け、断片の頭が右へ進むように並べられるか。
+ * 単語の頭（heads、昇順）の上だけで解くため、計算量はデータ長によらない。
+ * 置き方は先頭寄り・続き優先（各断片を並べ切れる範囲で最長、次の断片は最も前の単語の頭）。
+ * 単語の頭が先頭だけのデータは前方一致と同じため扱わない。
  */
 function initials(
   query: string,
   data: string,
-  heads: ReadonlySet<number>,
+  heads: readonly number[],
   space: Space,
   factor: number,
 ): Candidate | null {
   const m = query.length;
   const n = data.length;
-  if (m < 2 || n === 0 || heads.size < 2) return null;
-  // ok[i*n + p]: query[i] を p に置いて query[i..] を並べ切れる
-  const ok = new Uint8Array(m * n);
+  const H = heads.length;
+  if (m < 2 || n === 0 || H < 2) return null;
+  const c0 = query.charCodeAt(0);
+  let start = false;
+  for (let k = 0; k < H && !start; k++) start = data.charCodeAt(heads[k]!) === c0;
+  if (!start) return null;
+  // ok[i*H + k]: query[i..] を、heads[k] から始まる断片から並べ切れる。
+  // suf[i*(H+1) + k]: k 以降のいずれかで ok（右端 k = H は 0）
+  if (iniOk.length < m * H) iniOk = new Uint8Array(m * H);
+  if (iniSuf.length < (m + 1) * (H + 1)) iniSuf = new Uint8Array((m + 1) * (H + 1));
+  const ok = iniOk;
+  const suf = iniSuf;
+  const lcp = (i: number, k: number): number => {
+    const h = heads[k]!;
+    let l = 0;
+    while (i + l < m && h + l < n && query.charCodeAt(i + l) === data.charCodeAt(h + l)) l++;
+    return l;
+  };
+  // 断片 heads[k] .. heads[k]+len-1 の次に置ける最初の単語の頭の添字
+  const nextHead = (k: number, len: number): number => {
+    const end = heads[k]! + len;
+    let j = k + 1;
+    while (j < H && heads[j]! < end) j++;
+    return j;
+  };
   for (let i = m - 1; i >= 0; i--) {
-    let headAfter = false; // p より後ろに query[i+1] を置ける単語の頭がある
-    for (let p = n - 1; p >= 0; p--) {
-      if (data[p] === query[i]) {
-        ok[i * n + p] = i === m - 1 || (p + 1 < n && ok[(i + 1) * n + p + 1] === 1) || headAfter ? 1 : 0;
+    for (let k = 0; k < H; k++) {
+      const L = lcp(i, k);
+      let v = 0;
+      for (let len = 1; len <= L && !v; len++) {
+        if (i + len === m || suf[(i + len) * (H + 1) + nextHead(k, len)]) v = 1;
       }
-      if (i < m - 1 && heads.has(p) && ok[(i + 1) * n + p]) headAfter = true;
+      ok[i * H + k] = v;
     }
+    suf[i * (H + 1) + H] = 0;
+    for (let k = H - 1; k >= 0; k--) suf[i * (H + 1) + k] = ok[i * H + k]! | suf[i * (H + 1) + k + 1]!;
   }
-  let p = -1;
-  for (let s = 0; s < n; s++) {
-    if (heads.has(s) && ok[s]) {
-      p = s;
-      break;
+  if (!suf[0]) return null;
+  const positions: number[] = [];
+  let k = 0;
+  while (!ok[k]) k++;
+  for (let i = 0; i < m; ) {
+    // 並べ切れる範囲で最長の断片
+    let len = lcp(i, k);
+    while (!(i + len === m || suf[(i + len) * (H + 1) + nextHead(k, len)])) len--;
+    for (let t = 0; t < len; t++) positions.push(heads[k]! + t);
+    i += len;
+    if (i < m) {
+      k = nextHead(k, len);
+      while (!ok[i * H + k]) k++;
     }
-  }
-  if (p < 0) return null;
-  const positions = [p];
-  for (let i = 1; i < m; i++) {
-    if (p + 1 < n && ok[i * n + p + 1]) p = p + 1;
-    else {
-      let q = p + 1;
-      while (!(heads.has(q) && ok[i * n + q])) q++;
-      p = q;
-    }
-    positions.push(p);
   }
   return { intraScore: grade(INITIALS, (m / n) * factor), space, offset: 0, len: 0, positions };
 }
 
 const scratchMatch: ContiguousMatch = { plain: 0, ks: 0 };
 
+// [打鍵経由か][段] → 最長の長さと位置（呼び出しごとの確保を避けて使い回す）
+const segLen = [new Int32Array(4), new Int32Array(4)];
+const segAt = [new Int32Array(4), new Int32Array(4)];
+function takeSeg(f: number, cls: number, l: number, s: number): void {
+  if (l > segLen[f]![cls]!) {
+    segLen[f]![cls] = l;
+    segAt[f]![cls] = s;
+  }
+}
+
 /**
  * ラティスの連続一致・頭文字の候補を評価順（入力文字のまま → 打鍵経由、各々 先頭 > 単語の頭 > 頭文字 > 途中）で渡す。
  * 長さは一致した経路の長さ。同じ段では最長、同長は最も前の位置。
+ * 頭文字は、既にある候補を上回り得るとき（上限 = 最長の経路で素点を取ったとき）だけ求める。
  */
-function latticeCandidates(
-  lat: Lattice,
-  data: string,
-  heads: ReadonlySet<number>,
-  consider: (c: Candidate | null) => void,
-): void {
+function latticeCandidates(lat: Lattice, data: string, heads: ReadonlySet<number>, headList: readonly number[]): void {
   const N = data.length;
   if (N === 0) return;
-  // [打鍵経由か][段] → 最長の長さと位置
-  const len = [new Int32Array(4), new Int32Array(4)];
-  const at = [new Int32Array(4), new Int32Array(4)];
-  const take = (f: number, cls: number, l: number, s: number): void => {
-    if (l > len[f]![cls]!) {
-      len[f]![cls] = l;
-      at[f]![cls] = s;
-    }
-  };
-  for (let s = 0; s < N; s++) {
-    if (!lat.firstChars.has(data[s]!)) continue;
-    contiguousAt(lat, data, s, scratchMatch);
-    const cls = s === 0 ? PREFIX : heads.has(s) ? WORD : INNER;
-    take(0, cls, scratchMatch.plain, s);
-    if (cls === PREFIX || scratchMatch.ks >= 2) take(1, cls, scratchMatch.ks, s); // 打鍵の部分一致は2文字以上
-  }
-  const ini = heads.size >= 2 ? latticeInitials(lat, data, heads) : null;
-  const factors = [
-    [KANA_PREFIX, KANA_SUBSTRING],
-    [ROMAJI_PREFIX, ROMAJI_SUBSTRING],
-  ] as const;
   for (let f = 0; f < 2; f++) {
-    const [pf, sf] = factors[f]!;
-    if (len[f]![PREFIX]! > 0) consider(contiguous(PREFIX, (len[f]![PREFIX]! / N) * pf, 'kana', 0, len[f]![PREFIX]!));
-    if (len[f]![WORD]! > 0) consider(contiguous(WORD, (len[f]![WORD]! / N) * sf, 'kana', at[f]![WORD]!, len[f]![WORD]!));
-    const hit = ini?.[f];
-    if (hit) consider({ intraScore: grade(INITIALS, (hit.length / N) * sf), space: 'kana', offset: 0, len: 0, positions: hit });
-    if (len[f]![INNER]! > 0) consider(contiguous(INNER, (len[f]![INNER]! / N) * sf, 'kana', at[f]![INNER]!, len[f]![INNER]!));
+    segLen[f]!.fill(0);
+    segAt[f]!.fill(0);
   }
-}
-
-/**
- * 頭文字の一致のラティス版。展開状態 × 打鍵経由フラグ × 置いた位置で到達を解き、
- * フラグごとに最長の経路（経路長 2 以上）の位置列を返す。
- */
-function latticeInitials(lat: Lattice, data: string, heads: ReadonlySet<number>): [number[] | null, number[] | null] {
-  const ex = expandByDepth(lat);
-  const { X, inStart, inFrom, inCh, inKs } = ex;
-  const n = data.length;
-  // reach[(x*2+f)*n + p]: 状態 x・フラグ f の経路の最後の文字を p に置ける
-  const reach = new Uint8Array(X * 2 * n);
-  const minPos = new Int32Array(X * 2).fill(n); // reach が立つ最小の p
-  for (let x = 1; x < X; x++) {
-    for (let k = inStart[x]!; k < inStart[x + 1]!; k++) {
-      const y = inFrom[k]!;
-      const c = inCh[k]!;
-      const ks = inKs[k]!;
-      for (let fy = 0; fy < 2; fy++) {
-        if (y !== 0 && minPos[y * 2 + fy]! >= n) continue;
-        if (y === 0 && fy === 1) continue;
-        const f = fy | ks;
-        const base = (x * 2 + f) * n;
-        const ybase = (y * 2 + fy) * n;
-        for (let p = 0; p < n; p++) {
-          if (data.charCodeAt(p) !== c || reach[base + p]) continue;
-          const can =
-            y === 0 ? heads.has(p) : (p > 0 && reach[ybase + p - 1] === 1) || (heads.has(p) && minPos[y * 2 + fy]! < p);
-          if (can) {
-            reach[base + p] = 1;
-            if (p < minPos[x * 2 + f]!) minPos[x * 2 + f] = p;
-          }
+  if (lat.paths !== null) {
+    // 経路ごとに出現位置を調べる（各段で最長、同じ長さは最も前の位置。状態遷移で辿るのと同じ結果）
+    for (const [p, ks] of lat.paths) {
+      const f = ks ? 1 : 0;
+      for (let s = data.indexOf(p); s >= 0; s = data.indexOf(p, s + 1)) {
+        const cls = s === 0 ? PREFIX : heads.has(s) ? WORD : INNER;
+        if (f === 1 && cls !== PREFIX && p.length < 2) continue; // 打鍵の部分一致は2文字以上
+        if (p.length > segLen[f]![cls]! || (p.length === segLen[f]![cls]! && s < segAt[f]![cls]!)) {
+          segLen[f]![cls] = p.length;
+          segAt[f]![cls] = s;
+        }
+      }
+    }
+  } else {
+    for (let s = 0; s < N; s++) {
+      if (!lat.firstCodes.has(data.charCodeAt(s))) continue;
+      contiguousAt(lat, data, s, scratchMatch);
+      const cls = s === 0 ? PREFIX : heads.has(s) ? WORD : INNER;
+      takeSeg(0, cls, scratchMatch.plain, s);
+      if (cls === PREFIX || scratchMatch.ks >= 2) takeSeg(1, cls, scratchMatch.ks, s); // 打鍵の部分一致は2文字以上
+    }
+  }
+  const prefixFactor = [KANA_PREFIX, ROMAJI_PREFIX];
+  const substringFactor = [KANA_SUBSTRING, ROMAJI_SUBSTRING];
+  for (let f = 0; f < 2; f++) {
+    const l = segLen[f]![PREFIX]!;
+    if (l > 0) consider(contiguous(PREFIX, (l / N) * prefixFactor[f]!, 'kana', 0, l));
+  }
+  for (let f = 0; f < 2; f++) {
+    const l = segLen[f]![WORD]!;
+    if (l > 0) consider(contiguous(WORD, (l / N) * substringFactor[f]!, 'kana', segAt[f]![WORD]!, l));
+  }
+  if (headList.length >= 2) {
+    const ex = expandByDepth(lat);
+    const longest = ex.finals[ex.finals.length - 1]![1];
+    if (longest >= 2 && (best === null || best.intraScore < grade(INITIALS, (longest / N) * KANA_SUBSTRING))) {
+      const ini = latticeInitials(lat, data, headList);
+      for (let f = 0; f < 2; f++) {
+        const hit = ini[f];
+        if (hit) {
+          const intraScore = grade(INITIALS, (hit.length / N) * substringFactor[f]!);
+          consider({ intraScore, space: 'kana', offset: 0, len: 0, positions: hit });
         }
       }
     }
   }
+  for (let f = 0; f < 2; f++) {
+    const l = segLen[f]![INNER]!;
+    if (l > 0) consider(contiguous(INNER, (l / N) * substringFactor[f]!, 'kana', segAt[f]![INNER]!, l));
+  }
+}
+
+// latticeInitials の作業領域（状態 = 展開状態 * 2 + 打鍵経由フラグ）
+let iniAvail = new Int32Array(0); // その状態から次の断片を始められる最小の位置（断片の終わり + 1）
+let iniRecHead = new Int32Array(0); // iniAvail を決めた断片の頭の位置
+let iniRecFrom = new Int32Array(0); // その断片を始めた状態（-1 = 始点）
+let iniCur = new Int32Array(0);
+let iniCurOrigin = new Int32Array(0);
+let iniNext = new Int32Array(0);
+let iniNextOrigin = new Int32Array(0);
+let iniStamp = new Int32Array(0);
+let iniGen = 0;
+
+/**
+ * 頭文字の一致のラティス版。単語の頭を左から順に、その位置で断片を始められる状態から連続一致を辿り、
+ * 断片の終わりで「次の断片を始められる最小の位置」を状態ごとに記録する（最小で足りる: 早く終わるほど後ろの
+ * 単語の頭を多く使える）。フラグごとに最長の経路（経路長 2 以上）の位置列を返す。
+ */
+function latticeInitials(lat: Lattice, data: string, heads: readonly number[]): [number[] | null, number[] | null] {
   const out: [number[] | null, number[] | null] = [null, null];
+  const n = data.length;
+  let start = false;
+  for (let k = 0; k < heads.length && !start; k++) start = lat.firstCodes.has(data.charCodeAt(heads[k]!));
+  if (!start) return out;
+  const ex = expandByDepth(lat);
+  const { outStart, outTo, outCh, outKs } = ex;
+  const S = ex.X * 2;
+  if (iniAvail.length < S) {
+    iniAvail = new Int32Array(S);
+    iniRecHead = new Int32Array(S);
+    iniRecFrom = new Int32Array(S);
+    iniCur = new Int32Array(S);
+    iniCurOrigin = new Int32Array(S);
+    iniNext = new Int32Array(S);
+    iniNextOrigin = new Int32Array(S);
+    iniStamp = new Int32Array(S);
+    iniGen = 0;
+  }
+  const INF = 1 << 30;
+  iniAvail.fill(INF, 0, S);
+  iniAvail[0] = 0; // 始点（展開状態 0・フラグ 0）はどの単語の頭からでも始められる
+  iniRecFrom[0] = -1;
+  for (const h of heads) {
+    // この単語の頭で断片を始められる状態（iniAvail ≤ h）
+    let curLen = 0;
+    for (let st = 0; st < S; st++) {
+      if (iniAvail[st]! <= h) {
+        iniCur[curLen] = st;
+        iniCurOrigin[curLen++] = st;
+      }
+    }
+    for (let p = h; p < n && curLen > 0; p++) {
+      const c = data.charCodeAt(p);
+      iniGen++;
+      let nextLen = 0;
+      for (let a = 0; a < curLen; a++) {
+        const st = iniCur[a]!;
+        const x = st >> 1;
+        const f = st & 1;
+        for (let k = outStart[x]!; k < outStart[x + 1]!; k++) {
+          if (outCh[k] !== c) continue;
+          const ns = outTo[k]! * 2 + (f | outKs[k]!);
+          if (iniStamp[ns] === iniGen) continue;
+          iniStamp[ns] = iniGen;
+          iniNext[nextLen] = ns;
+          iniNextOrigin[nextLen++] = iniCurOrigin[a]!;
+          if (p + 1 < iniAvail[ns]!) {
+            iniAvail[ns] = p + 1;
+            iniRecHead[ns] = h;
+            iniRecFrom[ns] = iniCurOrigin[a]!;
+          }
+        }
+      }
+      const tc = iniCur;
+      iniCur = iniNext;
+      iniNext = tc;
+      const to = iniCurOrigin;
+      iniCurOrigin = iniNextOrigin;
+      iniNextOrigin = to;
+      curLen = nextLen;
+    }
+  }
   for (let f = 0; f < 2; f++) {
     for (let i = ex.finals.length - 1; i >= 0 && out[f] === null; i--) {
       const [xf, m] = ex.finals[i]!;
-      if (m < 2 || minPos[xf * 2 + f]! >= n) continue;
-      out[f] = traceInitials(ex, reach, data, heads, xf, f, minPos[xf * 2 + f]!);
+      const st = xf * 2 + f;
+      if (m < 2 || iniAvail[st]! >= INF) continue;
+      // 断片を後ろからたどって位置列を復元する
+      const positions: number[] = [];
+      for (let t = st; t > 0 && iniRecFrom[t] !== -1; t = iniRecFrom[t]!) {
+        const h = iniRecHead[t]!;
+        for (let q = iniAvail[t]! - 1; q >= h; q--) positions.push(q);
+        if (iniRecFrom[t] === 0) break;
+      }
+      out[f] = positions.reverse();
     }
   }
   return out;
-}
-
-/** latticeInitials の到達表から位置列を後ろ向きに復元する（続き優先） */
-function traceInitials(
-  ex: ReturnType<typeof expandByDepth>,
-  reach: Uint8Array,
-  data: string,
-  heads: ReadonlySet<number>,
-  x0: number,
-  f0: number,
-  p0: number,
-): number[] {
-  const { inStart, inFrom, inCh, inKs } = ex;
-  const n = data.length;
-  const positions = [p0];
-  let x = x0;
-  let f = f0;
-  let p = p0;
-  while (x !== 0) {
-    let next: [number, number, number] | null = null;
-    for (let k = inStart[x]!; k < inStart[x + 1]! && next === null; k++) {
-      if (inCh[k] !== data.charCodeAt(p)) continue;
-      const y = inFrom[k]!;
-      if (y === 0) {
-        if (inKs[k] === f && heads.has(p)) next = [0, 0, -1];
-        continue;
-      }
-      for (let fy = 0; fy < 2 && next === null; fy++) {
-        if ((fy | inKs[k]!) !== f) continue;
-        const ybase = (y * 2 + fy) * n;
-        if (p > 0 && reach[ybase + p - 1]) next = [y, fy, p - 1];
-        else if (heads.has(p)) {
-          for (let q = p - 1; q >= 0; q--) {
-            if (reach[ybase + q]) {
-              next = [y, fy, q];
-              break;
-            }
-          }
-        }
-      }
-    }
-    if (next === null || next[0] === 0) break;
-    [x, f, p] = next;
-    positions.push(p);
-  }
-  return positions.reverse();
 }
 
 // 照合中の最良候補（1 回の tier1Exact 呼び出し内で使う。JS は単一スレッド・同期実行のため安全）。
@@ -264,14 +331,22 @@ function considerSpace(
   query: string,
   data: string,
   heads: ReadonlySet<number>,
+  headList: readonly number[],
   space: Space,
   prefixFactor: number,
   substringFactor: number,
   minLen: number,
+  qMask: number,
+  dMask: number,
 ): void {
+  // どのサブマッチもクエリの全文字がデータにあることが前提（charMask の衝突は安全側）
+  if ((qMask & ~dMask) !== 0) return;
   consider(prefix(query, data, space, prefixFactor));
   consider(substring(query, data, heads, space, substringFactor, minLen));
-  if (heads.size >= 2) consider(initials(query, data, heads, space, substringFactor));
+  // 頭文字の素点は query.length / data.length 固定。既にある候補を上回れないなら求めない
+  if (headList.length >= 2 && (best === null || best.intraScore < grade(INITIALS, (query.length / data.length) * substringFactor))) {
+    consider(initials(query, data, headList, space, substringFactor));
+  }
 }
 
 export const tier1Exact: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
@@ -279,16 +354,16 @@ export const tier1Exact: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
   const kana = e.kana.text;
   if (q.lattice !== null && e.hasKeystrokeChar) {
     // データに打鍵の文字が無ければ打鍵経路は一致し得ないため文字列照合（else）と同値
-    if (latticeFeasible(q.lattice, e.kanaMask)) latticeCandidates(q.lattice, kana, e.kanaBoundaries, consider);
+    if (latticeFeasible(q.lattice, e.kanaMask)) latticeCandidates(q.lattice, kana, e.kanaBoundaries, e.kanaHeadList);
   } else if (!q.shadowed) {
-    considerSpace(q.kana, kana, e.kanaBoundaries, 'kana', KANA_PREFIX, KANA_SUBSTRING, 1);
+    considerSpace(q.kana, kana, e.kanaBoundaries, e.kanaHeadList, 'kana', KANA_PREFIX, KANA_SUBSTRING, 1, q.kanaMask, e.kanaMask);
   }
   if (q.kunrei !== null && e.kunrei !== null) {
-    considerSpace(q.kunrei, e.kunrei.text, e.kunreiHeads, 'kunrei', ROMAJI_PREFIX, ROMAJI_SUBSTRING, 2);
+    considerSpace(q.kunrei, e.kunrei.text, e.kunreiHeads, e.kunreiHeadList, 'kunrei', ROMAJI_PREFIX, ROMAJI_SUBSTRING, 2, q.kunreiMask, e.kunreiMask);
   }
   if (q.hepburn !== null && e.hepburn !== null) {
     const f = HEPBURN_PENALTY;
-    considerSpace(q.hepburn, e.hepburn.text, e.hepburnHeads, 'hepburn', ROMAJI_PREFIX * f, ROMAJI_SUBSTRING * f, 2);
+    considerSpace(q.hepburn, e.hepburn.text, e.hepburnHeads, e.hepburnHeadList, 'hepburn', ROMAJI_PREFIX * f, ROMAJI_SUBSTRING * f, 2, q.hepburnMask, e.hepburnMask);
   }
 
   if (best === null) return null;
