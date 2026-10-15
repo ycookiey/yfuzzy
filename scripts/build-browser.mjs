@@ -12,7 +12,7 @@ await build({
   format: 'iife',
   globalName: 'yfuzzy',
   banner: {
-    js: `/*! @ycookiey/yfuzzy v${version} | MIT | includes wanakana (MIT) | https://github.com/ycookiey/yfuzzy */`,
+    js: `/*! @ycookiey/yfuzzy v${version} | MIT | includes wanakana (MIT), Mozc romaji table (BSD-3-Clause) | https://github.com/ycookiey/yfuzzy */`,
   },
   outfile: 'dist/yfuzzy.min.js',
 });

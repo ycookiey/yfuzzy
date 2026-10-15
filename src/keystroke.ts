@@ -1,6 +1,6 @@
 // 打鍵の逆引き（spec 2.2）。IME でローマ字入力した結果のかなを、それを生む打鍵列へ戻す。
 // 変換木（vendor wanakana）の全エントリを元に、主要な IME（Mozc / Google 日本語入力の
-// ローマ字表で確認）と食い違う表記を外し、IME が受理する表記と促音の打ち方を加える。
+// ローマ字表で確認。THIRD_PARTY_NOTICES.md）と食い違う表記を外し、IME が受理する表記と促音の打ち方を加える。
 
 import { romajiKanaPairs } from './vendor/wanakana/romaji-to-kana.js';
 import { applyTransforms } from './normalize.js';
