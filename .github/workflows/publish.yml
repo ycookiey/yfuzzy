@@ -1,0 +1,29 @@
+# タグ vX.Y.Z の push で npm に公開する（trusted publishing: OIDC で認証し、トークン・OTP を使わない）。
+# npmjs.com のパッケージ設定で、この repository と workflow（publish.yml）を trusted publisher に登録しておく。
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # trusted publishing は npm 11.5.1 以上が必要
+      - run: npm install -g npm@^11.5.1
+      - name: タグと package.json の版が一致するか
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm publish
