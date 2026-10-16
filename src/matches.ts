@@ -9,7 +9,7 @@ import type { TierMatch } from './tiers/types.js';
 import type { Syllable } from './syllable.js';
 
 /** romaji 位置 p を含む音節の kana 位置（音節全体）を返す */
-function romajiPosToKana(p: number, syllables: readonly Syllable[]): number[] {
+export function romajiPosToKana(p: number, syllables: readonly Syllable[]): number[] {
   for (const s of syllables) {
     if (p >= s.romajiStart && p < s.romajiStart + s.romajiLen) {
       const out: number[] = [];
@@ -21,7 +21,7 @@ function romajiPosToKana(p: number, syllables: readonly Syllable[]): number[] {
 }
 
 /** spans を昇順ソートし、重複・隣接（半開区間で接する）を連続区間にマージ */
-function mergeSpans(spans: [number, number][]): [number, number][] {
+export function mergeSpans(spans: [number, number][]): [number, number][] {
   if (spans.length === 0) return [];
   spans.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const merged: [number, number][] = [];
@@ -48,7 +48,7 @@ export function computeMatches(entry: IndexEntry, match: TierMatch): [number, nu
   if (match.space === 'kana') {
     for (const p of match.positions) kanaPositions.add(p);
   } else {
-    const form = match.space === 'kunrei' ? entry.kunrei : entry.hepburn;
+    const form = match.space === 'kunrei' ? entry.kunrei : match.space === 'hepburn' ? entry.hepburn : entry.long;
     if (form) {
       for (const p of match.positions) {
         for (const kp of romajiPosToKana(p, form.syllables)) kanaPositions.add(kp);

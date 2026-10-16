@@ -3,13 +3,16 @@
 
 import type { NormalizedQuery } from '../query.js';
 import type { IndexEntry } from '../entry.js';
+import type { MatchKind } from '../types.js';
 
 /** 照合空間。matches 逆変換（M8）がどの空間の位置かを判別する */
-export type Space = 'kana' | 'kunrei' | 'hepburn';
+export type Space = 'kana' | 'kunrei' | 'hepburn' | 'long';
 
 /** 1 tier の照合結果。null = 非マッチ */
 export interface TierMatch {
   readonly tier: 1 | 2 | 3 | 4;
+  /** 一致の種類（spec 5章） */
+  readonly kind: MatchKind;
   /** tier 内相対スコア（0–1、大きいほど良い） */
   readonly intraScore: number;
   /** 一致した空間 */

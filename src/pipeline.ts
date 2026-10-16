@@ -7,6 +7,8 @@ import type { IndexEntry } from './entry.js';
 import type { RomajiOption } from './romaji/convert.js';
 import type { MatchingOption } from './types.js';
 import type { Matcher, TierMatch } from './tiers/types.js';
+import { KIND_OF_CLASS } from './tiers/tier1-exact.js';
+import { matchTerms } from './terms.js';
 import { tier1Exact } from './tiers/tier1-exact.js';
 import { tier2Flexible } from './tiers/tier2-flexible.js';
 import { tier3Typo } from './tiers/tier3-typo.js';
@@ -54,6 +56,8 @@ export interface SearchHit {
   readonly score: number;
   readonly tier: 1 | 2 | 3 | 4;
   readonly match: TierMatch;
+  /** 複数の語の一致（spec 2.7）のとき、各語の一致（ハイライトはこれらを合わせる） */
+  readonly parts?: readonly TierMatch[];
 }
 
 function clamp01(x: number): number {
@@ -102,6 +106,57 @@ export function runSearch(
 ): SearchHit[] {
   const trimmed = query.trim();
   if (trimmed === '') return []; // 空文字・空白のみ（spec 7章）
+  const words = trimmed.split(/\s+/u);
+  if (words.length >= 2) return runTerms(trimmed, words, entries, config);
+  return runSingle(trimmed, entries, config);
+}
+
+/** 段の番号（tier 1 の kind から） */
+const CLASS_OF_KIND: Readonly<Record<string, number>> = { prefix: 3, word: 2, initials: 1, inner: 0 };
+
+/** 複数の語のクエリの tier 1 の点数（spec 2.7）: tier 1 の帯の中で (段 + 0.5×順番どおり + 0.5×素点) / 4 */
+function termsScore(cls: number, ordered: boolean, raw: number): number {
+  return (3 + (cls + (ordered ? 0.5 : 0) + 0.5 * raw) / 4) / 4;
+}
+
+/**
+ * 複数の語（spec 2.7）: 空白込みの全体の一致と、語ごとの一致（すべての語を含む item）の高いほうを採る。
+ * 全体の一致は順番どおり扱いで、tier 1 は複数の語と同じ形の点数に直して比べる（完全一致は 1.0 のまま）
+ */
+function runTerms(
+  trimmed: string,
+  words: readonly string[],
+  entries: readonly IndexEntry[],
+  config: SearchConfig,
+): SearchHit[] {
+  const modes = modesFor(config.matching);
+  const terms = words.map((w) => expandQuery(w, config.separatorExpansion).flatMap((p) => normalizePath(p, config.romaji, modes)));
+  const singles = words.map((w) => [...w].length === 1);
+  const best = new Map<number, SearchHit>();
+  // 全体の一致は上位 limit 件だけで足りる: 点数の直し方は順位を保ち、最終の点数は全体の一致の点数以上なので、
+  // 全体の一致で上位 limit 件に入らない item が全体の一致の点数で最終の上位 limit 件に入ることはない
+  for (const h of runSingle(trimmed, entries, { ...config, minScore: 0 })) {
+    if (h.tier !== 1) {
+      best.set(h.refIndex, h);
+      continue;
+    }
+    const cls = CLASS_OF_KIND[h.match.kind]!;
+    best.set(h.refIndex, { ...h, score: termsScore(cls, true, h.match.intraScore * 4 - cls) });
+  }
+  for (const [idx, t] of matchTerms(terms, singles, entries)) {
+    const score = termsScore(t.cls, t.ordered, t.raw);
+    const cur = best.get(idx);
+    if (cur !== undefined && cur.score >= score) continue;
+    const match: TierMatch = { tier: 1, kind: KIND_OF_CLASS[t.cls]!, intraScore: score * 4 - 3, space: 'kana', positions: null };
+    best.set(idx, { refIndex: idx, score, tier: 1, match, parts: t.parts });
+  }
+  const hits = [...best.values()].filter((h) => h.score >= config.minScore);
+  hits.sort((a, b) => b.score - a.score || a.refIndex - b.refIndex);
+  return config.limit !== undefined ? hits.slice(0, config.limit) : hits;
+}
+
+/** 1 つの語（空白を含まないクエリ）の検索 */
+function runSingle(trimmed: string, entries: readonly IndexEntry[], config: SearchConfig): SearchHit[] {
 
   const pathStrings = expandQuery(trimmed, config.separatorExpansion);
   if (pathStrings.length === 0) return [];

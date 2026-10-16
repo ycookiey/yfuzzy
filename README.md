@@ -125,6 +125,17 @@ const r = search('keki', ['ケーキ'], { includeMatches: true });
 
 同点のときは literal の結果を採る（ハイライトが入力した文字の位置になる）。
 
+ローマ字で長音を打った入力（`saabaa`・IME 式の `sa-ba-`）も、長音「ー」を含む item に直接一致する（打ちかけの `saab` でも当たる）。長音の位置を印にして照合するので、長音のない別の語（`obaasan` に対する オバサン）には当たらない。長音を省いた入力（`saba`）は従来どおり当たる。
+
+### 複数の語
+
+空白で区切ったクエリは、すべての語を含む item に絞る（語の順番は問わない。`cal goo` → `Google Calendar`）。
+
+- 各語は直接一致（tier 1）だけを認める。1 文字の語は item の先頭か単語の頭からの一致だけ
+- 別の語は別の単語に当たる（`claude c` の `c` は `Claude` 自身には当てない）
+- score は最も弱い語の score。空白込みのクエリ全体としての一致と比べて高いほうを採る（並びどおり現れる item は今までどおり当たる）
+- 並びは tier → 最も弱い語の段（下の tier 1 の段）→ 語の順番どおりか → 長さ
+
 ### tier
 
 クエリは tier 1 から順に評価され、最初に一致した tier で確定する（既定は tier 1〜3。`maxTier: 4` で tier 4 も有効化）。`score` は 0〜1 で、上の tier ほど高い。
@@ -178,9 +189,12 @@ type SearchResult<T> = {
   refIndex: number;                       // items 内の位置
   score: number;                          // 0〜1、高いほど良い
   tier: 1 | 2 | 3 | 4;
+  kind: MatchKind;                        // 一致の種類（下）
   matches?: readonly [number, number][];  // includeMatches 時、tier 1/2 のみ
 };
 ```
+
+`kind` は一致の種類。tier 1 は `'prefix'`（item の先頭から）・`'word'`（単語の頭から）・`'initials'`（各単語の頭文字）・`'inner'`（単語の途中）、tier 2 は `'subsequence'`、tier 3 は `'typo'`、tier 4 は `'similar'`。複数の語のクエリでは、語ごとの一致を採用したときは最も弱い語の種類、空白込みの全体の一致を採用したときはその一致の種類。例えば長い文字列で偶然そろう頭文字の一致を除きたいときは `kind !== 'initials'` で絞る。
 
 ## 性能
 

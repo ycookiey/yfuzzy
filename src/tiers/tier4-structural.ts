@@ -29,5 +29,5 @@ export const tier4Structural: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
   const tversky = inter / denom;
   if (tversky < THRESHOLD) return null;
 
-  return { tier: 4, intraScore: tversky, space: 'kana', positions: null };
+  return { tier: 4, kind: 'similar', intraScore: tversky, space: 'kana', positions: null };
 };

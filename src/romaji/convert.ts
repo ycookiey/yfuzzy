@@ -28,6 +28,13 @@ export function hepburnEnabled(option: RomajiOption): boolean {
   return option === 'both' || option === 'hepburn';
 }
 
+/** 長音の印つきローマ字（spec 2.2）に使う方式: 訓令、無効なら ヘボン、どちらも無効なら null */
+export function longVowelTable(option: RomajiOption): RomajiTable | null {
+  if (kunreiEnabled(option)) return KUNREI;
+  if (hepburnEnabled(option)) return HEPBURN;
+  return null;
+}
+
 /**
  * core kana（1文字 or 拗音ダイグラフ 2文字、ー/ッ を含まない）をローマ字へ。
  * テーブルに無い文字（漢字・記号・英数）は小文字化してそのまま返す（パススルー）。

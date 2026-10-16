@@ -7,6 +7,7 @@ import {
   HEPBURN,
   kunreiEnabled,
   hepburnEnabled,
+  longVowelTable,
   type RomajiOption,
 } from './romaji/convert.js';
 import { toRomajiForm, kanaBoundaries, type RomajiForm } from './syllable.js';
@@ -38,6 +39,14 @@ export interface IndexEntry {
   readonly kunrei: RomajiForm | null;
   /** ヘボン式 RomajiForm（romaji オプションで無効時 null） */
   readonly hepburn: RomajiForm | null;
+  /**
+   * 長音の位置に印（-）を残したローマ字（spec 2.2）。長音「ー」を含む item だけ（それ以外は null）。
+   * ー を - に置き換えたかなを変換する（1 文字どうしの置き換えなので kana との位置の対応はそのまま）
+   */
+  readonly long: RomajiForm | null;
+  readonly longHeads: ReadonlySet<number>;
+  readonly longHeadList: readonly number[];
+  readonly longMask: number;
   /** 打鍵の文字（英小文字・'・-）を含むか。含まなければ打鍵ラティスの打鍵経路は一致し得ない */
   readonly hasKeystrokeChar: boolean;
   /** bigram 集合（tier 4 用、遅延生成） */
@@ -80,6 +89,9 @@ export function buildEntry(raw: string, refIndex: number, romaji: RomajiOption):
   const heads = wordHeads(kana, raw);
   const kunreiHeads = romajiHeads(kunrei, heads);
   const hepburnHeads = romajiHeads(hepburn, heads);
+  const longTable = longVowelTable(romaji);
+  const long = longTable !== null && kana.text.includes('ー') ? toRomajiForm(kana.text.replaceAll('ー', '-'), longTable) : null;
+  const longHeads = romajiHeads(long, heads);
   return {
     refIndex,
     raw,
@@ -90,6 +102,10 @@ export function buildEntry(raw: string, refIndex: number, romaji: RomajiOption):
     kanaHeadList: sorted(heads),
     kunreiHeadList: sorted(kunreiHeads),
     hepburnHeadList: sorted(hepburnHeads),
+    long,
+    longHeads,
+    longHeadList: sorted(longHeads),
+    longMask: long ? charMask(long.text) : 0,
     kanaMask: charMask(kana.text),
     kunreiMask: kunrei ? charMask(kunrei.text) : 0,
     hepburnMask: hepburn ? charMask(hepburn.text) : 0,

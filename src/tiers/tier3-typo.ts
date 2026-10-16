@@ -195,5 +195,5 @@ export const tier3Typo: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
 
   if (best === null) return null;
   const c: Candidate = best;
-  return { tier: 3, intraScore: c.intraScore, space: c.space, positions: null };
+  return { tier: 3, kind: 'typo', intraScore: c.intraScore, space: c.space, positions: null };
 };

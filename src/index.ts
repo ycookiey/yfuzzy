@@ -3,7 +3,7 @@
 
 import { buildEntry, type IndexEntry } from './entry.js';
 import { runSearch, type SearchConfig } from './pipeline.js';
-import { computeMatches } from './matches.js';
+import { computeMatches, mergeSpans } from './matches.js';
 import type {
   IndexOptions,
   SearchOptions,
@@ -18,6 +18,7 @@ export type {
   SearchIndex,
   RomajiOption,
   SeparatorConfig,
+  MatchKind,
   MatchingOption,
 } from './types.js';
 
@@ -82,9 +83,12 @@ export function createIndex<T>(
           refIndex: h.refIndex,
           score: h.score,
           tier: h.tier,
+          kind: h.match.kind,
         };
         // tier 1/2 のみ matches を付与（tier 3/4 は positions=null → undefined のまま）
-        if (config.includeMatches && h.match.positions !== null) {
+        if (config.includeMatches && h.parts !== undefined) {
+          result.matches = mergeSpans(h.parts.flatMap((p) => computeMatches(entries[h.refIndex]!, p)));
+        } else if (config.includeMatches && h.match.positions !== null) {
           result.matches = computeMatches(entries[h.refIndex]!, h.match);
         }
         return result;

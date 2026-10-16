@@ -7,28 +7,32 @@
 import type { Matcher, Space } from './types.js';
 import type { NormalizedQuery } from '../query.js';
 import type { IndexEntry } from '../entry.js';
+import type { MatchKind } from '../types.js';
 import { contiguousAt, expandByDepth, latticeFeasible, type ContiguousMatch, type Lattice } from '../lattice.js';
 
-const KANA_PREFIX = 1.0;
-const KANA_SUBSTRING = 0.9;
-const ROMAJI_PREFIX = 0.97;
-const ROMAJI_SUBSTRING = 0.87;
-const HEPBURN_PENALTY = 0.99; // 訓令優先（両式同時マッチ時の決定性）
+export const KANA_PREFIX = 1.0;
+export const KANA_SUBSTRING = 0.9;
+export const ROMAJI_PREFIX = 0.97;
+export const ROMAJI_SUBSTRING = 0.87;
+export const HEPBURN_PENALTY = 0.99; // 訓令優先（両式同時マッチ時の決定性）
 
 // 段（spec 4.1）。値が大きいほど上
-const PREFIX = 3; // item の先頭から
-const WORD = 2; // 単語の頭から
-const INITIALS = 1; // 各単語の頭文字（単語の中で続け、後ろの単語の頭へ飛ぶ）
-const INNER = 0; // 単語の途中
+export const PREFIX = 3; // item の先頭から
+export const WORD = 2; // 単語の頭から
+export const INITIALS = 1; // 各単語の頭文字（単語の中で続け、後ろの単語の頭へ飛ぶ）
+export const INNER = 0; // 単語の途中
+export const KIND_OF_CLASS: readonly MatchKind[] = ['inner', 'initials', 'word', 'prefix'];
 
 /** 段と素点（coverage × 係数 ∈ (0, 1]）から intraScore を作る。完全一致は (3 + 1) / 4 = 1 */
-function grade(cls: number, raw: number): number {
+export function grade(cls: number, raw: number): number {
   return (cls + raw) / 4;
 }
 
 // 連続一致は offset/len だけ持ち、最終 best 確定後に1回だけ配列化する。頭文字は positions を持つ
-interface Candidate {
+export interface Candidate {
   readonly intraScore: number;
+  /** 段（PREFIX・WORD・INITIALS・INNER） */
+  readonly cls: number;
   readonly space: Space;
   readonly offset: number;
   readonly len: number;
@@ -36,7 +40,7 @@ interface Candidate {
 }
 
 function contiguous(cls: number, raw: number, space: Space, offset: number, len: number): Candidate {
-  return { intraScore: grade(cls, raw), space, offset, len, positions: null };
+  return { intraScore: grade(cls, raw), cls, space, offset, len, positions: null };
 }
 
 function range(len: number, offset: number): number[] {
@@ -81,7 +85,7 @@ let iniSuf = new Uint8Array(0);
  * 置き方は先頭寄り・続き優先（各断片を並べ切れる範囲で最長、次の断片は最も前の単語の頭）。
  * 単語の頭が先頭だけのデータは前方一致と同じため扱わない。
  */
-function initials(
+export function initials(
   query: string,
   data: string,
   heads: readonly number[],
@@ -142,7 +146,7 @@ function initials(
       while (!ok[i * H + k]) k++;
     }
   }
-  return { intraScore: grade(INITIALS, (m / n) * factor), space, offset: 0, len: 0, positions };
+  return { intraScore: grade(INITIALS, (m / n) * factor), cls: INITIALS, space, offset: 0, len: 0, positions };
 }
 
 const scratchMatch: ContiguousMatch = { plain: 0, ks: 0 };
@@ -210,7 +214,7 @@ function latticeCandidates(lat: Lattice, data: string, heads: ReadonlySet<number
         const hit = ini[f];
         if (hit) {
           const intraScore = grade(INITIALS, (hit.length / N) * substringFactor[f]!);
-          consider({ intraScore, space: 'kana', offset: 0, len: 0, positions: hit });
+          consider({ intraScore, cls: INITIALS, space: 'kana', offset: 0, len: 0, positions: hit });
         }
       }
     }
@@ -366,8 +370,19 @@ export const tier1Exact: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
     considerSpace(q.hepburn, e.hepburn.text, e.hepburnHeads, e.hepburnHeadList, 'hepburn', ROMAJI_PREFIX * f, ROMAJI_SUBSTRING * f, 2, q.hepburnMask, e.hepburnMask);
   }
 
+  // 長音の印つきローマ字（spec 2.2）。係数・最小長は訓令と同じ
+  if (q.long !== null && e.long !== null) {
+    considerSpace(q.long, e.long.text, e.longHeads, e.longHeadList, 'long', ROMAJI_PREFIX, ROMAJI_SUBSTRING, 2, q.longMask, e.longMask);
+  }
+
   if (best === null) return null;
   const c: Candidate = best;
   best = null;
-  return { tier: 1, intraScore: c.intraScore, space: c.space, positions: c.positions ?? range(c.len, c.offset) };
+  return {
+    tier: 1,
+    kind: KIND_OF_CLASS[c.cls]!,
+    intraScore: c.intraScore,
+    space: c.space,
+    positions: c.positions ?? range(c.len, c.offset),
+  };
 };

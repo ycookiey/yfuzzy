@@ -11,6 +11,7 @@ import {
   HEPBURN,
   kunreiEnabled,
   hepburnEnabled,
+  longVowelTable,
   type RomajiOption,
 } from './romaji/convert.js';
 import { kanaToRomaji } from './syllable.js';
@@ -35,6 +36,12 @@ export interface NormalizedQuery {
   readonly kanaMask: number;
   readonly kunreiMask: number;
   readonly hepburnMask: number;
+  /**
+   * 長音の印つきローマ字（spec 2.2）。phonetic 経路で、母音の重なり（aa）か母音の後の - があるときだけ。
+   * 母音の重なりを「母音 + -」にしてからかな・ローマ字にする（saab → sa-b）。データ側 long と照合する
+   */
+  readonly long: string | null;
+  readonly longMask: number;
   /** 打鍵ラティス（literal 経路でかなを含むとき。それ以外は null で kana を文字列照合） */
   readonly lattice: Lattice | null;
   /**
@@ -58,6 +65,7 @@ export function normalizeQuery(
   const phonetic = mode === 'phonetic';
   const kunrei = phonetic && kunreiEnabled(romaji) ? kanaToRomaji(kana, KUNREI) : null;
   const hepburn = phonetic && hepburnEnabled(romaji) ? kanaToRomaji(kana, HEPBURN) : null;
+  const long = phonetic ? longVowelForm(pre, romaji) : null;
   return {
     kana,
     singleChar: isSingleCodePoint(kana),
@@ -66,10 +74,22 @@ export function normalizeQuery(
     kanaMask: charMask(kana),
     kunreiMask: kunrei !== null ? charMask(kunrei) : 0,
     hepburnMask: hepburn !== null ? charMask(hepburn) : 0,
+    long,
+    longMask: long !== null ? charMask(long) : 0,
     lattice: phonetic ? null : buildLattice(kana),
     shadowed: false,
     bigrams: null,
   };
+}
+
+const LONG_VOWEL = /([aiueo])\1|[aiueo]-/;
+
+/** 長音の印つきローマ字（spec 2.2）。印が無ければ null */
+function longVowelForm(pre: string, romaji: RomajiOption): string | null {
+  const table = longVowelTable(romaji);
+  if (table === null || !LONG_VOWEL.test(pre)) return null;
+  const marked = pre.replace(/([aiueo])\1+/g, '$1-');
+  return kanaToRomaji(applyTransforms(toKana(marked), 'postKana'), table);
 }
 
 function isSingleCodePoint(s: string): boolean {

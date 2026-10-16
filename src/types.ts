@@ -37,6 +37,12 @@ export interface SearchOptions {
 }
 
 /** 検索結果1件 */
+/**
+ * 一致の種類（spec 5章）。tier 1: prefix（item の先頭から）・word（単語の頭から）・initials（各単語の頭文字）・
+ * inner（単語の途中）、tier 2: subsequence（飛び飛び）、tier 3: typo（誤字）、tier 4: similar（構造の類似）
+ */
+export type MatchKind = 'prefix' | 'word' | 'initials' | 'inner' | 'subsequence' | 'typo' | 'similar';
+
 export interface SearchResult<T> {
   item: T;
   /** items 内の位置 */
@@ -45,6 +51,8 @@ export interface SearchResult<T> {
   score: number;
   /** マッチした層 */
   tier: 1 | 2 | 3 | 4;
+  /** 一致の種類（複数の語のクエリでは最も弱い語の種類） */
+  kind: MatchKind;
   /** 元文字列上の一致区間 [start, end)（includeMatches 時かつ tier 1/2 のみ） */
   matches?: readonly [number, number][];
 }

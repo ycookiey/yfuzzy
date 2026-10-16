@@ -226,8 +226,9 @@ export const tier2Flexible: Matcher = (q: NormalizedQuery, e: IndexEntry) => {
   }
   if (e.kunrei) consider(q.kunrei, q.kunreiMask, e.kunrei.text, e.kunreiMask, e.kunrei.boundaries, 'kunrei');
   if (e.hepburn) consider(q.hepburn, q.hepburnMask, e.hepburn.text, e.hepburnMask, e.hepburn.boundaries, 'hepburn');
+  if (e.long) consider(q.long, q.longMask, e.long.text, e.longMask, e.long.boundaries, 'long');
 
   if (best === null) return null;
   const c: Candidate = best;
-  return { tier: 2, intraScore: c.intraScore, space: c.space, positions: c.positions };
+  return { tier: 2, kind: 'subsequence', intraScore: c.intraScore, space: c.space, positions: c.positions };
 };

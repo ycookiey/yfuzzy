@@ -16,6 +16,7 @@ describe('tier1Exact (spec 4.1)', () => {
   it('かな完全一致 → intraScore 1.0', () => {
     expect(run('カミ', 'カミ')).toEqual({
       tier: 1,
+      kind: 'prefix',
       intraScore: 1,
       space: 'kana',
       positions: [0, 1],
